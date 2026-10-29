@@ -1,0 +1,8 @@
+{
+  "_comment": "大宗商品与衍生品每日新闻自动化采编系统 - 统一配置文件",
+  "obsidian_news_dir": "",
+  "custom_user_agent": "CommodityNewsScraper/2.0 (commodity_news_agent@internal.com)",
+  "request_timeout_seconds": 60,
+  "default_max_per_site": 3
+}
+

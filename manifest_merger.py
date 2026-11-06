@@ -1,4 +1,3 @@
-import config_loader
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -224,8 +223,8 @@ def merge_and_finalize_manifest(target_dir):
                 else:
                     title = after_bracket
             all_raw_items.append({
-                "tier": "P1" if "Mondo" in site else "P2" if ("FCA" in site or "雅虎" in site or "FOW" in site) else "P3",
-                "strategy": "B" if "Mondo" in site else "A" if "FOW" in site else "C",
+                "tier": "P1" if ("Mondo" in site or "FOW" in site) else "P2" if any(s in site for s in ["CFTC", "CME", "ICE", "LME", "FIA", "FCA", "雅虎", "NewsNow", "SEC", "ISDA", "DMIST", "SEBI", "ESMA", "Nasdaq", "NFA", "IOSCO", "ETimes"]) else "P3",
+                "strategy": "B" if ("Mondo" in site or "FOW" in site) else "A" if any(s in site for s in ["CFTC", "CME", "ICE", "LME", "FIA", "FCA", "雅虎", "NewsNow", "SEC", "ISDA", "DMIST", "SEBI", "ESMA", "Nasdaq", "NFA", "IOSCO", "ETimes"]) else "C",
                 "site": site,
                 "category": "",
                 "original_title": title,
@@ -368,5 +367,9 @@ if __name__ == "__main__":
     parser.add_argument("--dir", type=str, default=None, help="Target directory")
     args = parser.parse_args()
     
-    target_dir = config_loader.get_target_dir(time.strftime("%Y-%m-%d"), args.dir)
+    try:
+        from config_loader import get_target_dir
+        target_dir = get_target_dir(time.strftime("%Y-%m-%d"), cli_dir=args.dir)
+    except Exception:
+        target_dir = args.dir if args.dir else os.path.expanduser(f"~/Documents/Obsidian Vault/工作/新闻/{time.strftime('%Y-%m-%d')} 新闻")
     merge_and_finalize_manifest(target_dir)

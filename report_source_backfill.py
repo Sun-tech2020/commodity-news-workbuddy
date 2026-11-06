@@ -57,7 +57,7 @@ def main():
 
     report = args.report
     if report is None:
-        cands = [f for f in os.listdir(target) if f.endswith("国际大宗商品与衍生品市场日报.md")]
+        cands = [f for f in os.listdir(target) if "国际大宗商品与衍生品市场日报" in f and f.endswith(".md")]
         if not cands:
             print("[错误] 未找到日报文件，请用 --report 指定。")
             sys.exit(1)

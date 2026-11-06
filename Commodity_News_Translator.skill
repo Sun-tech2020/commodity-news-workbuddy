@@ -1,0 +1,430 @@
+{
+  "skill_name": "Commodity_News_Translator",
+  "version": "4.1.0",
+  "author": "Antigravity Intelligence System",
+  "type": "Internal_Market_News_Briefing",
+  "description": "国际大宗商品与衍生品市场权威内部新闻报送（《境外市场动态》、《宏观市场动态》内参）专业编译与分板块 Markdown 生成 Skill。基于 1093 行历史真实翻译语料库（前期翻译整理.md）与最新样刊 PDF 深度蒸馏：采用客观、干练、通畅的自然新闻快报叙事流（导语起手 -> 事实展开 -> 权威引述/市场反应/生效时间），严禁假大空投研升华套话与机械打标。将入选新闻精准分流至【一、交易所动态】、【二、市场动态】、【三、监管动态】三大板块，板块内按全局顺序统一编号（### [N] 中文标题）。标题采用 15~25 字符主谓宾完整陈述句，机构保留标准英文简称，杜绝生硬缩写；正文首句包含时间锚点；严格执行来源元数据单向透传与三方一致性校验铁律（来源平台与 URL 100% 透传自清单与 PDF，严禁臆造）；正文篇幅严格控制在 150~220 字高密度自然段落，严格保留英文人名与执行金融专业术语映射。生成的日报文件与目录必须按信息源类别在末尾标注中文全角括号后缀（如（一）、（二）、（一、二）或（所有））。",
+  "core_capabilities": [
+    "Category-Annotated Output Naming Rule (类别后缀括号标注铁律：生成的存证目录及日报文件必须按类别标注后缀括号，如 <YYYY-MM-DD> 国际大宗商品与衍生品市场日报（一）.md 及对应目录，支持（一）、（二）、（一、二）或（所有）)",
+    "Zero Commentary & Zero Hallucination Factual Grounding (绝对零主观评论与零幻视铁律：严禁AI生成任何主观臆断、观点定调、升华套话或虚构推论；所有翻译内容必须在英文原文中 100% 找到对应原句与事实支撑)",
+    "Internal News Briefing DNA (权威内部新闻报送内参 DNA：主谓宾完整新闻标题 + 150~220 字自然快报段落流)",
+    "Natural Narrative Flow (自然新闻流：导语起手 -> 规格数据展开 -> 权威引述/市场反应/进度尾声，不机械添加'具体看'/'据悉')",
+    "Anti-Mechanical Translation Engine (彻底消除机器直译腔、被动从句、生造缩写与八股总结套话)",
+    "Scenario-Specific Gold Templates (交易所业务新品、监管政策指引、行业合作预测市场、权威调查趋势四大场景标准示范)",
+    "High-Frequency Financial Lexicon (高频金融动词与自然连接词体系：宣布、发布报告称、计划上市、征求意见、其中、报告显示、业内人士认为等)",
+    "Three-Tier Categorization (三大板块精准分类编排：一、交易所动态、二、市场动态、三、监管动态)",
+    "Strict Source Metadata Provenance (严格来源元数据单向继承与零幻视铁律：来源平台、原文 URL、时间 100% 读自清单/PDF)",
+    "Clean Numbered Heading (纯净编号标题：### [N] 中文标题，无多余跳转链接)",
+    "Natural Title Length (标题 15~25 字符，主谓宾完整，通顺易读，杜绝生造缩略词)",
+    "Acronym in Title (标题中机构/交易所统一使用行业标准英文简称，如 CME、CFTC、SEC、LME、ICE、Cboe、FCA、WFE、SEBI 等)",
+    "Opening Time Anchor (正文首句时间锚点：首句必含具体时间如'9月16日，'或'近日，'/'近期，')",
+    "Continuous Sequential Re-indexing & Safe PDF Renaming (日报出报连续递增重编号与两阶段安全 PDF 同步重命名：严格按照最终日报呈现顺序从 [1] 到 [N] 连续重编号，两阶段安全重命名物理 PDF 文件并同步更新 download_manifest.json，确保日报标号、物理文件与审计清单三方 100% 绝对连续且严格吻合)",
+    "Strict Financial Terminology Mapping (强制金融衍生品与大宗商品专业术语字典)",
+    "Zero-Error Entity Policy (英文人名与专有名词严格保留英文原样)",
+    "High-Density Briefing Summarization (150~220 字精炼自然快报，依靠提取原文详实细节与数据达标，绝不含填充套话)"
+  ],
+  "internal_news_briefing_dna": {
+    "description": "基于历史翻译语料库与内参样刊 PDF 深度蒸馏的内部新闻报送内参模型：",
+    "four_sentence_natural_flow": {
+      "sentence_1_lead": {
+        "role": "第一句：导语起手（时间 + 主体 + 核心动作 + 核心事件）",
+        "syntax_template": "[时间/近日]，[机构全称（英文缩写）][宣布/发布报告称/计划/推出/正考虑/签署]...，[事件核心概述与核心动向]。",
+        "examples": [
+          "9月16日，英国金融行为监管局（FCA）发布加密资产监管制度指引，将于2027年10月25日生效。",
+          "近日，行情数据与分析服务商BMLL宣布与预测市场平台Kalshi达成战略合作，将Kalshi历史数据纳入其全球数据库，并进行标准化处理，以适配芝加哥商业交易所事件合约格式。",
+          "5月12日，芝加哥商业交易所（CME）宣布，将与图形处理器（GPU）市场资讯机构Silicon Data合作推出全球首个算力期货。"
+        ]
+      },
+      "sentence_2_3_drilldown": {
+        "role": "第二/三句：事实细节与量化数据展开（自然衔接，不刻意加'具体看'）",
+        "syntax_template": "直接端出产品规格、量化数据、条款清单或调研比例。连接方式：指引覆盖.../报告显示.../其中，.../该合约挂钩...采用...交割/主要内容包括...",
+        "examples": [
+          "指引覆盖稳定币发行、加密交易平台、托管及质押服务，明确企业合规要求，并计划于10月开展进一步咨询。",
+          "报告显示，转型金融成为行业重要发展方向，交易所自身低碳转型计划数量几乎翻倍。其中，93%受访机构面临投资者对可持续产品的需求，88%受访机构将拓展业务机遇列为首要驱动因素。",
+          "机构可直接使用相关数据开展美联储决议、CPI、GDP等主题的模型回测，以及跨资产研究、组合对冲和新产品开发，降低预测市场数据获取与使用门槛。"
+        ]
+      },
+      "sentence_4_5_ending": {
+        "role": "第四/五句：收尾交代（权威引述 / 市场反应 / 生效时间 / 后续进度，绝无假大空套话）",
+        "syntax_template": "客观如实交代：[机构职务+英文姓名]指出/表示... 或 市场分析认为/业内人士表示... 或 当前受...影响，市场参与者多持观望态度... 或 目前尚待监管机构批准。",
+        "examples": [
+          "当前受监管规则不明确影响，市场交易活动相对低迷，参与者多持观望态度，等待后续监管细则落地。",
+          "WFE首席执行官Nandini Sukumar指出，尽管政策环境充满不确定性，交易所仍积极布局可持续金融，以响应市场各方需求。",
+          "CME指出，算力是21世纪的“新石油”，在人工智能模型训练等场景中发挥重要作用，但市场仍缺乏避险工具，期货产品的推出将有效满足行业价格发现和风险管理需要。"
+        ]
+      }
+    },
+    "high_frequency_connectors": [
+      {
+        "word": "近日",
+        "usage": "正文缺省具体日期时的首选起手时间锚点"
+      },
+      {
+        "word": "报告显示 / 数据显示",
+        "usage": "引出调查报告或市场行情统计核心数据"
+      },
+      {
+        "word": "其中",
+        "usage": "拆解细分分项、品种表现或问卷占比"
+      },
+      {
+        "word": "指引覆盖 / 主要内容包括",
+        "usage": "列举政策法规、监管文件或业务指南的核心条款"
+      },
+      {
+        "word": "此外 / 同时",
+        "usage": "引出平行事实、伴生事件或同步配套措施"
+      },
+      {
+        "word": "主要原因是",
+        "usage": "客观解释供需变动、价格异动或政策出台的逻辑"
+      },
+      {
+        "word": "目前 / 计划于",
+        "usage": "陈述当前审批状态、生效日期或后续咨询步骤"
+      },
+      {
+        "word": "业内人士认为 / 市场分析认为",
+        "usage": "引述市场各方反应或对行业供需价格的客观预期"
+      }
+    ],
+    "strong_financial_verbs": [
+      {
+        "verb": "拟 / 计划",
+        "context": "拟上市、拟推出、拟实施、计划于今年X月推出"
+      },
+      {
+        "verb": "发布 / 宣布",
+        "context": "发布成交数据、发布监管指引、宣布成立、宣布达成合作"
+      },
+      {
+        "verb": "征询 / 征求意见",
+        "context": "就...进一步征询市场意见、公开发布征求意见稿"
+      },
+      {
+        "verb": "推出 / 上市",
+        "context": "推出算力期货、上市集运指数期货、引入做市机制"
+      },
+      {
+        "verb": "放宽 / 强化 / 修订",
+        "context": "放宽特定披露要求、强化反洗钱监控、修订结算担保基金规则"
+      },
+      {
+        "verb": "下调 / 上调",
+        "context": "下调进口税率、上调预测产量、调整涨跌停板幅度"
+      },
+      {
+        "verb": "暂停 / 恢复",
+        "context": "暂停相关衍生品交易、逐步恢复交易、暂停报价服务"
+      },
+      {
+        "verb": "指出 / 表示 / 强调",
+        "context": "首席执行官指出、监管主席表示、强调合规底线"
+      }
+    ]
+  },
+  "anti_mechanical_translation_rules": {
+    "description": "彻底根除机器直译与八股套话的 12 大新闻报送内参准则：",
+    "rules": [
+      {
+        "id": 1,
+        "principle": "杜绝假大空升华套话（一票否决项）",
+        "bad_example": "此举将显著提升跨境资金结算与综合风控管理效能，有助于持续深化金融市场高水平对外开放。",
+        "good_example": "直接交代客观事实：当前受监管规则不明确影响，市场参与者多持观望态度，等待后续监管细则落地。"
+      },
+      {
+        "id": 2,
+        "principle": "杜绝生硬标题缩写（一票否决项）",
+        "bad_example": "BMLL合Kalshi拓预测（生硬晦涩，不通顺）",
+        "good_example": "BMLL 与 Kalshi 达成合作以扩大预测市场数据的获取渠道（通畅完整，15~25字）"
+      },
+      {
+        "id": 3,
+        "principle": "严禁强行转义与过度脑补",
+        "bad_example": "将 AI 金融中心指数强行转义为大宗商品仓单质押与期货套保",
+        "good_example": "忠实报道原文：近年来亚太金融技术及 AI 实力加快崛起，对传统金融中心形成挑战。"
+      },
+      {
+        "id": 4,
+        "principle": "杜绝被动语态与被动从句",
+        "bad_example": "该产品被期待在4月份正式上市",
+        "good_example": "该产品计划于今年4月上市 / 拟于4月推出"
+      },
+      {
+        "id": 5,
+        "principle": "消除「根据一份声明表示」冗余结构",
+        "bad_example": "根据英国金融行为监管局发布的一份官方声明表示，他们发布了...",
+        "good_example": "9月16日，英国金融行为监管局（FCA）发布..."
+      },
+      {
+        "id": 6,
+        "principle": "地道转化市场反响与需求表达",
+        "bad_example": "该新合约从市场参与者那里获得了巨大的需求和积极反馈",
+        "good_example": "该新合约受到市场积极响应 / 需求表现强劲"
+      },
+      {
+        "id": 7,
+        "principle": "精炼重构背景从句",
+        "bad_example": "在这样一个中东地缘政治危机持续发酵的宏观背景之下",
+        "good_example": "受中东地缘局势影响， / 随着中东冲突持续发酵，"
+      },
+      {
+        "id": 8,
+        "principle": "动词连用替代介词与目的状语从句",
+        "bad_example": "监管机构采取了行动以为了使得市场能够保持透明度",
+        "good_example": "监管机构采取举措以提升市场透明度 / 该举措旨在提升市场透明度"
+      },
+      {
+        "id": 9,
+        "principle": "量化数据紧凑结构化表达",
+        "bad_example": "微型黄金期货显示出了290%的增长达到了57.3万手，微型白银期货增长865%达到20.5万手",
+        "good_example": "微型黄金和微型白银期货同比分别增长290%、865%至57.3万手、20.5万手"
+      },
+      {
+        "id": 10,
+        "principle": "监管与司法术语地道金融化",
+        "bad_example": "免除责任（relief）、揭发者（whistleblower）、强力行动（enforcement）",
+        "good_example": "合规豁免令（Exemptive Relief）、吹哨人、执法诉讼/处罚通报"
+      },
+      {
+        "id": 11,
+        "principle": "合约规格与交割要素精准紧凑",
+        "bad_example": "这四个合约是用美元来作为计价单位的，并且是以现金的方式来进行最终结算交割",
+        "good_example": "该合约覆盖四条航线，均采用美元计价、现金交割"
+      },
+      {
+        "id": 12,
+        "principle": "100% 英文原文原句事实对应支撑（Sentence-to-Sentence Grounding）",
+        "bad_example": "AI为了凑齐字数自行脑补未经报道的行业背景或虚构统计数据",
+        "good_example": "正文中的每一句中文，必须在输入的英文新闻原文中找到明确的事实出处与原句对应。"
+      }
+    ]
+  },
+  "scenario_specific_translation_templates": {
+    "description": "四大核心业务场景的真人专家新闻内参示范样本（直接源自真实历史语料库与最新样刊 PDF）：",
+    "scenarios": [
+      {
+        "scenario_name": "场景一：交易所业务、新品上市与成交量异动",
+        "applicable_entities": [
+          "CME",
+          "ICE",
+          "LME",
+          "Cboe",
+          "Euronext",
+          "SGX",
+          "HKEX",
+          "ICOMEX",
+          "EEX"
+        ],
+        "gold_standard_sample": "**CME 拟上市算力期货。**5月12日，芝加哥商业交易所（CME）宣布，将与图形处理器（GPU）市场资讯机构Silicon Data合作推出全球首个算力期货。该期货将挂钩Silicon Data相关GPU租赁费用指数，目前尚待监管机构审核，预计于今年内上市。CME指出，算力是21世纪的“新石油”，在人工智能模型训练等场景中发挥重要作用，但市场仍缺乏避险工具，期货产品的推出将有效满足行业价格发现和风险管理需要。",
+        "key_focal_points": [
+          "上市时间/挂牌日期",
+          "合约标的与指数挂钩机制",
+          "交割方式（现金/实物）与监管审批状态",
+          "官方推出的战略意图与行业避险需求"
+        ]
+      },
+      {
+        "scenario_name": "场景二：监管政策、合规指引、豁免令与执法诉讼",
+        "applicable_entities": [
+          "FCA",
+          "CFTC",
+          "SEC",
+          "ESMA",
+          "SEBI",
+          "中国证监会",
+          "ASIC",
+          "NFA"
+        ],
+        "gold_standard_sample": "**FCA 发布加密货币监管制度指引。**9月16日，英国金融行为监管局（FCA）发布加密资产监管制度指引，将于2027年10月25日生效。指引覆盖稳定币发行、加密交易平台、托管及质押服务，明确企业合规要求，并计划于10月开展进一步咨询。当前受监管规则不明确影响，市场交易活动相对低迷，参与者多持观望态度，等待后续监管细则落地。",
+        "key_focal_points": [
+          "指引/法规名称及正式生效日期",
+          "覆盖业务范围（稳定币、平台、质押、托管等）",
+          "企业合规要求与后续公众咨询安排",
+          "当前市场交易现状与参与者态度"
+        ]
+      },
+      {
+        "scenario_name": "场景三：行业战略合作、预测市场与金融科技创新",
+        "applicable_entities": [
+          "BMLL",
+          "Kalshi",
+          "Polymarket",
+          "Betr",
+          "FalconX",
+          "Quanta"
+        ],
+        "gold_standard_sample": "**BMLL 与 Kalshi 达成合作以扩大预测市场数据的获取渠道。**近日，行情数据与分析服务商BMLL宣布与预测市场平台Kalshi达成战略合作，将Kalshi历史数据纳入其全球数据库，并进行标准化处理，以适配芝加哥商业交易所事件合约格式。机构可直接使用相关数据开展美联储决议、CPI、GDP等主题的模型回测，以及跨资产研究、组合对冲和新产品开发，降低预测市场数据获取与使用门槛。",
+        "key_focal_points": [
+          "合作双方主体与核心技术整合",
+          "数据接入与标准化格式适配",
+          "机构应用场景（模型回测、跨资产研究、组合对冲）",
+          "业务价值（降低数据获取与使用门槛）"
+        ]
+      },
+      {
+        "scenario_name": "场景四：权威机构调查、行业年度报告与宏观竞争力",
+        "applicable_entities": [
+          "WFE",
+          "Z/Yen",
+          "FIA",
+          "ICAC",
+          "USDA",
+          "IEA",
+          "标普全球",
+          "BIMCO"
+        ],
+        "gold_standard_sample": "**可持续发展成为交易所的战略机遇。**世界交易所联合会（WFE）发布第12期年度可持续发展调查报告，涵盖全球58家交易所2025年业务情况。报告显示，转型金融成为行业重要发展方向，交易所自身低碳转型计划数量几乎翻倍。其中，93%受访机构面临投资者对可持续产品的需求，88%受访机构将拓展业务机遇列为首要驱动因素。WFE首席执行官Nandini Sukumar指出，尽管政策环境充满不确定性，交易所仍积极布局可持续金融，以响应市场各方需求。",
+        "key_focal_points": [
+          "调查报告名称与覆盖交易所样本数量",
+          "核心调查数据与占比比例（如93%、88%）",
+          "转型金融与低碳发展核心动向",
+          "机构高管/负责人的直接观点引述"
+        ]
+      }
+    ]
+  },
+  "source_metadata_provenance_rules": {
+    "description": "来源元数据（网站名称、原文 URL、发布时间）的继承与溯源铁律，严禁任何形式的模型幻视或主观篡改：",
+    "rules": [
+      {
+        "name": "One-Way Metadata Inheritance (单向透传原则)",
+        "requirement": "Markdown 日报中 `> **来源**：[{网站名称}]({URL}) | **时间**：{发布日期}` 的数据，必须 100% 直接读取自本地 `download_manifest.json` 或物理 PDF 文件头部的元数据字段，严禁任何重新生成或主观臆断。"
+      },
+      {
+        "name": "No Entity Substitution on Source (严禁主体替换来源)",
+        "requirement": "即使新闻内容报道的是某交易所（如 CME、ICE）或监管机构（如 CFTC、SEC），若该文章是在资讯聚合平台（如 Mondo Visione、NewsNow）或财经媒体（如雅虎财经、彭博社）上实际抓取的，来源网站名称必须如实标注为实际采集平台（如 `Mondo Visione`），绝对严禁擅自篡改为新闻中涉及的机构实体名称。"
+      },
+      {
+        "name": "Zero Hallucination on URL (严禁伪造或拼接 URL)",
+        "requirement": "所有嵌入 Markdown 的 URL 必须是爬虫在抓取阶段实际请求并成功返回 200 的真实原文链接。绝对严禁根据文章标题或机构名称主观拼接理论上的官方二级目录 URL。"
+      },
+      {
+        "name": "Tri-Party Consistency Assertion (三方一致性校验)",
+        "requirement": "必须确保以下三者 100% 严格一致：(1) Markdown 来源超链接文本 `[{网站名称}]`；(2) `download_manifest.json` 中的 `site` 字段；(3) 物理 PDF 文件名中的网站前缀 `[{全局序号}] {网站名称}-...pdf`。"
+      }
+    ]
+  },
+  "category_classification_rules": {
+    "description": "所有新闻必须基于核心主体实体与业务属性精准分流至三大板块之一，严格禁止跨板块混淆：",
+    "strict_decision_tree": [
+      "【第一步：监管与司法判定 (优先)】检查新闻核心主体或内容是否涉及政府金融监管机构（CFTC, SEC, FCA, ESMA, IOSCO, NFA, OSC, BaFin, ASIC, ACER, 中国证监会等）、立法机关（参众两院立法法案）、司法法院（DOJ, 联邦法院等）。若涉及监管政策、规则修订/废止、合规声明、审查通报、执法诉讼、司法罚金、吹哨人奖励等 -> 100% 归入【三、监管动态】。",
+      "【第二步：交易所主体判定】检查新闻核心主体是否为具体交易所/交易与结算机构（如 CME Group, ICE, LME, Eurex, Cboe, SGX, HKEX, OSE/JPX, TMX Group, Euronext, B3, EEX, TFEX, MIAX, Quanta, ICOMEX 等）。若涉及交易所自身新合约挂牌、ADV/成交量/持仓量数据、做市商机制、持仓限额市场征询、清算交割规则修改、系统运维与技术升级、高管人事任命等 -> 100% 归入【一、交易所动态】。",
+      "【第三步：宏观、品种与市场研报判定 (兜底)】若新闻涉及宏观经济大盘（美联储利率决议、通胀/就业数据、地缘政治危机对供应链传导）、具体商品品种（白糖、棉花、菜系、花生、苹果、红枣、PTA、甲醇、尿素、短纤、纯碱、烧碱、PX、瓶片、玻璃、煤炭、硅铁、锰硅、原油、天然气、金属等）的全球产销、库存、天气、进出口、现货/期货价格行情，或第三方智库/媒体行业深度研报（OilPrice, ICAC, WoodMac, Baker Hughes, Platts, BMLL 等） -> 100% 归入【二、市场动态】。"
+    ],
+    "categories": [
+      {
+        "name": "一、交易所动态",
+        "strict_scope": "核心主体必须为具体的交易所或交易与结算组织自身（如 CME, ICE, LME, Eurex, Cboe, HKEX, SGX, OSE/JPX, TMX, Euronext, B3, EEX, MIAX, Quanta, ICOMEX 等）。"
+      },
+      {
+        "name": "二、市场动态",
+        "strict_scope": "宏观经济大盘、大宗商品具体品种基本面供需、现货与期货行情波动以及第三方行业合作与深度研报。"
+      },
+      {
+        "name": "三、监管动态",
+        "strict_scope": "核心主体必须为政府金融与证券期货监管机构、立法司法部门或多边合规组织（如 CFTC, SEC, FCA, ESMA, IOSCO, NFA, OSC, BaFin, ASIC, ACER, 中国证监会等）。"
+      }
+    ]
+  },
+  "title_and_heading_naming_rules": {
+    "length_limit": {
+      "min_characters": 12,
+      "max_characters": 26,
+      "rule": "中文标题（不包含开头的 '### [N] ' 序号前缀）长度应在 15~25 字符左右（允许在 12~26 字符区间）。语言必须通顺连贯，主谓宾结构完整，直击新闻核心动态，严禁晦涩缩略。"
+    },
+    "acronym_policy": "标题中的交易所、监管机构及主要金融机构统一使用标准英文简称，禁止在标题中生造非通用缩写（如 CME、CFTC、SEC、LME、ICE、Cboe、OSC、Eurex、TMX、MIAX、FCA、ACER、WFE、SEBI、BMLL、Kalshi 等）。",
+    "examples": [
+      {
+        "original_bad": "BMLL合Kalshi拓预测（11字，生硬晦涩）",
+        "correct": "BMLL 与 Kalshi 达成合作以扩大预测市场数据的获取渠道（28字，通顺自然）"
+      },
+      {
+        "original_bad": "GFCI40亚金融中心崛起（12字，过于紧绷）",
+        "correct": "亚洲金融加快崛起挑战传统金融中心（16字，主谓宾完整）"
+      },
+      {
+        "original_bad": "FCA发布加密新监管指引（12字）",
+        "correct": "FCA 发布加密货币监管制度指引（15字，规范权威）"
+      },
+      {
+        "original_bad": "WFE发布可持续发展调查（12字）",
+        "correct": "可持续发展成为交易所的战略机遇（15字，提炼核心结论）"
+      }
+    ]
+  },
+  "opening_time_anchor_rules": {
+    "description": "正文摘要的第一句话必须出现具体的时间节点作为时间锚点。",
+    "rules": [
+      "如果原文/正文中提及了具体的日期或交易时段（如 9月16日、9月17日等），必须在正文首句开头准确写出（例如：'9月16日，...'、'9月17日，...'）。",
+      "如果原文/正文中未明确提及具体日期，则必须在正文首句使用'近日，'或'近期，'作为时间状语开头（例如：'近日，行情数据与分析服务商BMLL宣布...'）。"
+    ]
+  },
+  "mandatory_lexicon_rules": {
+    "description": "以下术语映射为绝对强制标准：",
+    "mappings": [
+      {
+        "english": "Calendar Month Futures",
+        "mandatory_chinese": "日历月期货",
+        "forbidden_translations": ["月历期货", "日历期货", "单月期货"]
+      },
+      {
+        "english": "open interest",
+        "mandatory_chinese": "持仓量",
+        "forbidden_translations": ["未平仓合约量", "未平仓合约", "开仓兴趣", "持仓总数"]
+      },
+      {
+        "english": "trading volume",
+        "mandatory_chinese": "成交量",
+        "forbidden_translations": ["交易量", "买卖量", "交投量"]
+      },
+      {
+        "english": "lots",
+        "mandatory_chinese": "手",
+        "forbidden_translations": ["份", "批", "手合约", "个"]
+      },
+      {
+        "english": "CME",
+        "title_usage": "CME",
+        "body_first_occurrence": "芝加哥商品交易所（CME）",
+        "body_subsequent_short": "CME"
+      },
+      {
+        "english": "CFTC",
+        "title_usage": "CFTC",
+        "body_first_occurrence": "美国商品期货交易委员会（CFTC）",
+        "body_subsequent_short": "CFTC"
+      },
+      {
+        "english": "SEC",
+        "title_usage": "SEC",
+        "body_first_occurrence": "美国证券交易委员会（SEC）",
+        "body_subsequent_short": "SEC"
+      },
+      {
+        "english": "FCA",
+        "title_usage": "FCA",
+        "body_first_occurrence": "英国金融行为监管局（FCA）",
+        "body_subsequent_short": "FCA"
+      },
+      {
+        "english": "WFE",
+        "title_usage": "WFE",
+        "body_first_occurrence": "世界交易所联合会（WFE）",
+        "body_subsequent_short": "WFE"
+      },
+      {
+        "english": "LME",
+        "title_usage": "LME",
+        "body_first_occurrence": "伦敦金属交易所（LME）",
+        "body_subsequent_short": "LME"
+      },
+      {
+        "english": "ICE",
+        "title_usage": "ICE",
+        "body_first_occurrence": "洲际交易所（ICE）",
+        "body_subsequent_short": "ICE"
+      }
+    ]
+  }
+}

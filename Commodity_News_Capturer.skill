@@ -1,0 +1,166 @@
+{
+  "skill_name": "Commodity_News_Capturer",
+  "version": "7.2.0",
+  "author": "Antigravity Intelligence System",
+  "type": "Deterministic_Data_Acquisition_And_Persistence",
+  "description": "国际大宗商品与衍生品市场新闻自动化真实抓取、分波梯队执行、多策略引擎解耦、双轨付费墙穿透、智能品种与主题过滤与高保真 PDF 物理流持久化专家 Skill。确立【策略解耦与优先级分波调度架构（Strategy-Decoupled & Priority-Staged Tool-Calling Architecture）】：杜绝任何 Agent 自行手写临时爬虫代码或产生幻视。业务信息源分类严格统一采用大写中文数字【一类、二类、三类】，彻底与底层访问策略【A、B、C】解耦区分：一类信息源（主责核心库共 25 站）、二类信息源（外围监管协同库共 23 站）、三类信息源（全球交易所协同库共 23 站）。底层爬虫按访问策略精准绑定：`strategy_a_capturer.py`（策略 A：直接解析与下载，覆盖 CFTC/CME/ICE/LME 等 17 站）、`strategy_b_capturer.py`（策略 B：抓取标题+全网二次检索，覆盖 FOW 与 Mondo Visione 2 站）、`strategy_c_penetrator.py`（策略 C：专有高防穿透下载，覆盖彭博社与标普全球 2 站）。调度按分波执行：Wave 1 执行策略 A 官方机构与公开源（17 站直接下载，单站 0~3 篇）；Wave 2 执行策略 B 核心专线（FOW Insights + Mondo Visione 全量抓取，抓标题+全网二次检索）；Wave 3 执行策略 C 头部商业媒体高防穿透源（彭博社 + 标普全球，单站 0~3 篇）；Wave 4 执行 `manifest_merger.py`（存证汇总与全局 [1]~[N] 重命名）；Wave 5 执行 `translate_manifest_to_report.py`（三段式零幻视日报生成）。严格执行【强制前置分类确认机制】、【类别后缀括号标注铁律（例如（一）、（二）、（一、二）或（所有））】与【四大业务过滤铁律】。",
+  "core_capabilities": [
+    "Pre-Execution Classification Confirmation Rule (强制前置分类确认机制：任务触发时若未指定类别，必须先向用户问清确认执行哪一类信息源爬取：一类主责源、二类外围协同源、三类交易所协同源)",
+    "Category-Annotated Output Naming Rule (类别后缀括号标注铁律：每日生成的新闻目录及日报文件必须按类别标注后缀括号，例如 <YYYY-MM-DD> 新闻（一） 及 <YYYY-MM-DD> 国际大宗商品与衍生品市场日报（一）.md，支持（一）、（二）、（一、二）或（所有）)",
+    "Strategy-Decoupled Crawler Architecture (爬虫策略解耦架构：strategy_a_capturer.py 直接解析与下载, strategy_b_capturer.py 抓标题+二次检索, strategy_c_penetrator.py 专有穿透通道, manifest_merger.py 存证合并, translate_manifest_to_report.py 翻译出报)",
+    "Priority-Staged Execution Pipeline (优先级分波流水线：Wave 1 调度策略 A[17官方公开源直接抓取]；Wave 2 调度策略 B[FOW+MV全量抓标题二次搜索]；Wave 3 调度策略 C[彭博+标普高防穿透]；Wave 4 汇总重命名[Merger]；Wave 5 翻译生成[Translator])",
+    "Strict Physical Date in PDF Verification (PDF 物理正文日期严格核验：下载落盘的 PDF 文本内部必须明确包含 T 或 T-1 的物理日期标记，未命中或为历史旧闻坚决物理删除剔除)",
+    "Zero-Quota Tolerance for Stale Sources (零容忍历史旧闻凑数：若某站点在 T/T-1 无新发布，合法捕获篇数为 0 篇，严禁回溯抓取几天前或几个月前的旧闻)",
+    "Cross-Day Deduplication (跨日历史去重：自动扫描前一日 download_manifest.json，若 T-1 新闻在昨日已下载则自动跳过)",
+    "Strict Commodity & Theme Filtering (智能品种与主题过滤器：优先放行 5 大主题与宏观动态；目标品种全球行情 100% 准入且不限交易所名称；纯非目标品种行情坚决过滤)",
+    "Strategy B Full Capture & Strategy A/C Strict Quota (策略 B 核心资讯源全量捕获；策略 A/C 源单站 0~3 篇严格限额，优中选优，杜绝单一渠道刷屏)",
+    "Clean High-Fidelity Native Webpage PDF Export (方案 1 网页原生高保真导出：彻底清洗 Cookie/Privacy 弹窗遮罩，原汁原味导出带 Logo 与样式的多页完整网页 PDF)",
+    "Joint Source Attribution Policy (方式 B 联合溯源标注：二次检索源与其内容提供商联合标注如 英国期货期权世界（FOW Insights / FIA），三方 100% 保持一致)",
+    "Strategy B Public Cross-Search (针对英国期货期权世界 FOW Insights 与 Mondo Visione 抓取标题并在 Google/全网二次检索公开全文并联合溯源)",
+    "Targeted Article Refetcher & Cross-Search (靶向文章重搜与多源补全机制 targeted_refetcher.py：针对人工审核提出的需要登录/残缺文章，自动全网发散搜索替代公开源，自动核验并无缝追加合并)",
+    "Strategy C Dedicated Penetration Engine (针对彭博社 Bloomberg、标普全球 S&P Global 等头部商业媒体高防付费墙的固化穿透通道，严禁主站根目录 403 误判熔断)",
+    "Live HTTP 200 & Article Detail URL Assertion (单篇详情页真实探活与特征校验，严禁频道列表页与 404 伪链接)",
+    "Decoupled Capturer-Translator Workflow (采集与翻译严格解耦：Capturer 专职真实 PDF 存证与 Manifest 输出，Translator 专职消费 Manifest 并生成三段式投研日报)",
+    "Minimum Body Length Enforcement (正文有效字数 < 150 词坚决放弃下载或后置 pypdf 自动物理删除)",
+    "Dynamic Registry Reader (自动解析本地 News_Sources_Registry.md 获取抓取源)",
+    "Binary Stream Validation (PDF魔数 b'%PDF' 强校验与 SHA256 哈希存证)",
+    "Audit Trail & Manifest Generator (结构化 download_manifest.json 存证审计清单生成)"
+  ],
+  "source_categories": {
+    "category_1": {
+      "name": "一类信息源（当月编译人员负责 · 核心主责库）",
+      "total_sites": 25,
+      "breakdown": {
+        "manual_collaboration": 4,
+        "strategy_a_direct": 17,
+        "strategy_b_cross_search": 2,
+        "strategy_c_penetration": 2
+      },
+      "user_command": "爬取一类的网站新闻 / 执行一类采编"
+    },
+    "category_2": {
+      "name": "二类信息源（协助成员 1 负责 · 外围协同库）",
+      "total_sites": 23,
+      "description": "涵盖境外主流监管机构及 TradingView 等专业分析平台，日常由协助成员 1 人工浏览查漏补缺",
+      "user_command": "爬取二类的网站新闻",
+      "breakdown": {
+        "manual_collaboration": 2,
+        "strategy_a_direct": 19,
+        "strategy_b_cross_search": 2,
+        "strategy_c_penetration": 0
+      }
+    },
+    "category_3": {
+      "name": "三类信息源（协助成员 2 负责 · 外围协同库）",
+      "total_sites": 23,
+      "description": "涵盖 Euronext、Cboe、Eurex、JPX、MCX 等境外主要衍生品与现货交易所，日常由协助成员 2 人工浏览查漏补缺",
+      "user_command": "爬取三类的网站新闻",
+      "breakdown": {
+        "manual_collaboration": 5,
+        "strategy_a_direct": 18,
+        "strategy_b_cross_search": 0,
+        "strategy_c_penetration": 0
+      }
+    }
+  },
+  "filtering_and_quota_rules": {
+    "pre_execution_inquiry_rule": "当用户下达新闻抓取指令但未指明类别时，必须首先向用户发问：'请问本次需要爬取的是哪一类信息源？（一类主责核心源、二类外围协同源，还是三类交易所协同源？）'，待用户确认后执行。",
+    "physical_date_verification_rules": {
+      "strict_rule": "终极物理日期铁律：下载落盘的 PDF 文件内部必须明确能提取并看到有效物理日期标记（如 2026-09-18, September 18, 2026, Sept. 19, 2026 等）。通常工作日（周二至周五）采编窗口为当天（T）与前一日（T-1）共 2 天；【周一特殊日期窗口规则】：若目标日期 T 为周一（Monday），因国际金融市场周末休市无新闻发布，采编与核验窗口特殊扩展为 T（周一）、T-1（周日）、T-2（周六）、T-3（上周五）共 4 天，确保周五核心动态不遗漏。",
+      "outdated_rejection": "若在正文提取或前置分析中发现该文章的发布时间早于截止日期（非周一早于 T-1，周一早于 T-3），坚决判定为过期旧闻并物理删除丢弃。",
+      "zero_count_policy": "若某注册源站点在有效采编窗口期内没有发布新的合规文章，该站点今日捕获数量即为 0 篇（0 <= count <= 3），绝不允许为了凑数抓取历史旧闻。"
+    },
+    "quota_limit_per_source": "策略 B 核心源（英国期货期权世界 FOW Insights, Mondo Visione）当日合规新闻全量抓取；策略 A/C 源每个网站/源最多抓取 0~3 篇（0 <= count <= 3），优中选优，杜绝单一渠道刷屏。",
+    "theme_exemption_rules": {
+      "priority": "第一优先级（全量豁免准入）",
+      "rule": "凡属于以下 5 大主题及交易所/监管宏观动态的新闻，100% 优先直接豁免准入，不受任何具体商品品种门槛限制：",
+      "exempt_themes": [
+        "1. 监管动态 (Regulation & Compliance)：政策法规、合规指引、执法诉讼、监管处罚（CFTC, SEC, IOSCO, ESMA, FCA 等）；",
+        "2. 创新动态 (Innovation & Tech)：金融科技、前沿技术、碳交易/ESG机制、数字化转型、AI应用、代币化/区块链；",
+        "3. 新产品动态 (New Products & Contracts)：新合约推出、拟上市新衍生品、新指数编制、做市商机制、微型合约；",
+        "4. 合作动态 (Partnerships & Cooperation)：交易所合作备忘录 (MoU)、战略联盟、跨境互联互通、结算清算合作、并购；",
+        "5. 预测市场 (Prediction Markets & Event Contracts)：预测市场运作、事件合约合规、创新衍生品机制（Kalshi, Polymarket, ForecastEx 等）；",
+        "6. 交易所宏观运营 (Exchange Operations)：成交量月报、持仓管理办法征询、交易结算系统升级等。"
+      ]
+    },
+    "target_commodity_scope": {
+      "priority": "第二优先级（目标品种全球行情准入）",
+      "rule": "针对具体商品基本面、产销、供需、库存、天气、进出口与行情动态类新闻，只要涉及下列目标品种清单，其全球/国内市场新闻均 100% 准入（绝不要求新闻中必须出现“郑商所”或“ZCE”字眼，如巴西白糖、美棉出口、加拿大油菜籽、国际甲醇、海外尿素招标等全球行情均完全合规）：",
+      "target_included_commodities": [
+        "白糖 (Sugar)",
+        "棉花 (Cotton)",
+        "棉纱 (Cotton Yarn)",
+        "菜籽油/菜油 (Rapeseed Oil / Canola Oil)",
+        "菜粕 (Rapeseed Meal)",
+        "菜籽 (Rapeseed / Canola)",
+        "花生 (Peanut / Groundnut)",
+        "苹果 (Apple)",
+        "红枣 (Red Date / Jujube)",
+        "PTA (精对苯二甲酸 / Purified Terephthalic Acid)",
+        "甲醇 (Methanol)",
+        "尿素 (Urea)",
+        "短纤 (涤纶短纤 / Polyester Staple Fiber / PSF)",
+        "纯碱 (Soda Ash)",
+        "烧碱 (Caustic Soda)",
+        "对二甲苯 (PX / Paraxylene)",
+        "瓶片 (PET Flakes / Bottle-grade PET)",
+        "玻璃 (Glass)",
+        "动力煤 (Thermal Coal)",
+        "硅铁 (Ferrosilicon)",
+        "锰硅 (Silicon Manganese)",
+        "衍生品期权与指数"
+      ],
+      "non_target_filtered_commodities": "仅当新闻纯粹属于原油 (Crude Oil)、黄金 (Gold)、白银 (Silver)、铜 (Copper)、铝 (Aluminum)、锌 (Zinc)、铁矿石 (Iron Ore)、大豆 (Soybeans)、玉米 (Corn)、棕榈油 (Palm Oil) 等非目标品种单一品种行情（且不属于第一优先级主题）时，才予以过滤。"
+    }
+  },
+  "execution_protocols": {
+    "deterministic_tool_pipeline": {
+      "overview": "【策略解耦与优先级分波固化调度体系】所有波次均绑定唯一的物理执行脚本：",
+      "waves": [
+        {
+          "wave_id": "Wave 1 (策略 A 官方机构与公开聚合源抓取)",
+          "target_scope": "注册表策略 A 源 (17个: CFTC, CME, ICE, LME, FIA, DMIST, NewsNow, 雅虎财经, 纳斯达克, SEBI, SEC, FCA, ISDA, NFA, ESMA, 印度经济时报, IOSCO)，直接解析与下载，单站 0~3 篇",
+          "mandatory_execution_command": "python3 strategy_a_capturer.py --date <YYYY-MM-DD> --dir \"<YYYY-MM-DD> 新闻（一）\"",
+          "output_artifact": "manifest_strategy_a_raw.json 及对应原版高清 PDF 文件"
+        },
+        {
+          "wave_id": "Wave 2 (策略 B 核心专业资讯源全量抓取与换源确认闸门)",
+          "target_scope": "注册表策略 B 重点源（英国期货期权世界 FOW Insights 与 Mondo Visione MV），抓取标题 + 全网二次检索，当日合规新闻全量捕获",
+          "mandatory_execution_command": "python3 strategy_b_capturer.py --source all --date <YYYY-MM-DD> --dir \"<YYYY-MM-DD> 新闻（一）\"",
+          "interactive_verification_gate": {
+            "trigger_timing": "Wave 2 抓取完成后",
+            "agent_mandatory_action": "Agent 必须向用户汇报捕获清单，并主动发起询问：'针对策略 B 捕获结果，哪几篇需要换源？没有则输入 N。'",
+            "user_response_handling": {
+              "if_user_inputs_index_or_keywords": "调用 python3 targeted_refetcher.py 进行全网多源发散重搜、下载全文并追加合并，直至用户满意。",
+              "if_user_inputs_N": "确认无误，继续执行后续 Wave 或存证合并流程。"
+            }
+          },
+          "output_artifact": "manifest_strategy_b_raw.json 及对应原版高清 PDF 文件"
+        },
+        {
+          "wave_id": "Wave 3 (策略 C 头部商业媒体高防穿透抓取)",
+          "target_scope": "注册表策略 C 源 (2个: 彭博社 Bloomberg, 标普全球洞察 S&P Global)，单站 0~3 篇",
+          "anti_bot_invariant_rules": [
+            "1. 彭博社防 403 铁律：彭博主站受 Akamai 严格阻断，必须通过官方无墙开放站 (site:bnnbloomberg.ca) 与彭博法律 (site:bloomberglaw.com) 检索落地，严禁直接裸连主站；",
+            "2. 知乎 Bypass Paywalls Clean 原理：结合 googlenewsdecoder 直解原始媒体落地页 + curl_cffi (Chrome 120 伪造) + Playwright 高保真原生 PDF 渲染；",
+            "3. 零残缺审计：通过 full_text_verifier.py 严格校验有效正文 >= 150 词，单站 0~3 篇，允许合规归档为 0 篇。"
+          ],
+          "mandatory_execution_command": "python3 strategy_c_penetrator.py --date <YYYY-MM-DD> --dir \"<YYYY-MM-DD> 新闻（一）\"",
+          "output_artifact": "manifest_strategy_c_raw.json 及对应 P3 原版高清 PDF 文件"
+        },
+        {
+          "wave_id": "Wave 4 (存证汇总与 Manifest 合并)",
+          "target_scope": "全量落盘资产（Wave 1 + Wave 2 + Wave 3: 策略 A + 策略 B + 策略 C）",
+          "mandatory_execution_command": "python3 manifest_merger.py --dir \"<YYYY-MM-DD> 新闻（一）\"",
+          "output_artifact": "三大板块严格排序、[1]~[N] 全局连续重命名的物理 PDF 资产与标准 download_manifest.json，并自动更新历史去重索引库"
+        },
+        {
+          "wave_id": "Wave 5 (翻译出报)",
+          "target_scope": "基于 download_manifest.json 全量存证资产",
+          "mandatory_execution_command": "python3 translate_manifest_to_report.py --date <YYYY-MM-DD> --dir \"<YYYY-MM-DD> 新闻（一）\" --category 一",
+          "output_artifact": "三段式零幻视专业市场日报 markdown 文件（<YYYY-MM-DD> 国际大宗商品与衍生品市场日报（一）.md）"
+        }
+      ]
+    }
+  }
+}

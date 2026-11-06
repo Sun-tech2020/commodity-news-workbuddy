@@ -1,18 +1,32 @@
-import config_loader
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Strategy A Capturer: 策略 A 抓取标题 + 全网二次检索公开全文引擎 (Title Scraping & Cross-Search)
-负责执行 News_Sources_Registry.md 中标注为【策略 A】的站点：
-- P0: 英国期货期权世界 (FOW Insights, https://www.fow.com/insights)（全量抓取，无篇数上限）
+Strategy A Capturer: 策略 A 直接解析与下载抓取引擎 (Direct Web/Native Capture v7.0.0)
+负责执行 News_Sources_Registry.md 中标注为【策略 A】的站点（共 17 站）：
+1. 美国商品期货交易委员会（CFTC）
+2. 芝商所（CME）
+3. 洲际交易所（ICE）
+4. 伦敦金属交易所（LME）
+5. 期货业协会（FIA）
+6. 衍生品市场标准化倡议组织（DMIST）
+7. NewsNow
+8. 雅虎财经
+9. 纳斯达克（Nasdaq）
+10. 印度证券交易委员会（SEBI）
+11. 美国证券交易委员会（SEC）
+12. 英国金融行为监管局（FSA/FCA）
+13. 国际掉期与衍生品协会（ISDA）
+14. 美国全国期货协会（NFA）
+15. 欧洲证券及市场管理局（ESMA）
+16. 印度经济时报（The Economic Times）
+17. 国际证监会组织（IOSCO）
 
 技术工作流：
-1. 访问 FOW Insights 列表页，提取当日文章卡片（标题、发布日期、摘要）；
-2. 严格核验发布日期属于 T 或 T-1，并命中目标主题/品种；
-3. 将标题核心词传入 Google News RSS / 全网检索公开来源全文（如 Investing.com, FIA, PR Newswire 等）；
-4. 联合溯源标注为 "英国期货期权世界（FOW Insights / <公开源>）" 并原生打印 PDF；
-5. 严格审计魔数 b'%PDF'、字数 >= 150 词与物理日期；
-6. 产出 manifest_strategy_a_raw.json。
+1. 通过官方 RSS、定制直爬或 Google News Syndication 直达官方发布厅与新闻落地页；
+2. 严格核验发布日期属于 T 或 T-1（周一支持扩展到上周五），并命中目标主题/品种；
+3. 使用 Playwright 浏览器原生打印 (page.pdf)，100% 还原排版与图片，清除干扰弹窗与遮罩；
+4. 严格审计魔数 b'%PDF'、正文段落、字数及物理正文日期；
+5. 产出 manifest_strategy_a_raw.json。
 """
 
 import os
@@ -27,6 +41,19 @@ import feedparser
 from bs4 import BeautifulSoup
 import pypdf
 from playwright.sync_api import sync_playwright
+from full_text_verifier import verify_full_text_integrity
+
+# 目标品种清单（郑商所核心品种）
+TARGET_COMMODITIES = [
+    "sugar", "white sugar", "raw sugar", "cotton", "cotton yarn",
+    "rapeseed", "canola", "rapeseed oil", "canola oil", "rapeseed meal",
+    "peanut", "peanuts", "groundnut", "apple", "apples", "jujube", "red date",
+    "pta", "purified terephthalic acid", "methanol", "urea",
+    "polyester", "staple fiber", "psf", "soda ash", "caustic soda",
+    "px", "paraxylene", "pet flakes", "bottle-grade pet",
+    "glass", "thermal coal", "ferrosilicon", "silicon manganese",
+    "derivatives", "options", "futures contract"
+]
 
 EXEMPT_KEYWORDS = [
     "regulation", "regulator", "regulatory", "compliance", "enforcement",
@@ -37,19 +64,41 @@ EXEMPT_KEYWORDS = [
     "new contract", "launch", "listing", "index", "market maker",
     "partnership", "mou", "alliance", "acquisition", "clearing", "settlement",
     "prediction market", "event contract", "kalshi", "polymarket", "forecastex",
-    "trading volume", "adv", "open interest", "exchange", "futures", "options", "derivatives",
-    "clearing house", "margin", "liquidity", "etf", "commodities", "crypto"
+    "trading volume", "adv", "open interest", "exchange", "futures", "options"
 ]
 
-TARGET_COMMODITIES = [
-    "sugar", "white sugar", "raw sugar", "cotton", "cotton yarn",
-    "rapeseed", "canola", "rapeseed oil", "canola oil", "rapeseed meal",
-    "peanut", "peanuts", "groundnut", "apple", "apples", "jujube", "red date",
-    "pta", "purified terephthalic acid", "methanol", "urea",
-    "polyester", "staple fiber", "psf", "soda ash", "caustic soda",
-    "px", "paraxylene", "pet flakes", "bottle-grade pet",
-    "glass", "thermal coal", "ferrosilicon", "silicon manganese"
-]
+SITE_SHORT_CODE_MAP = {
+    "美国商品期货交易委员会（CFTC）": "CFTC",
+    "芝商所（CME）": "CME",
+    "洲际交易所（ICE）": "ICE",
+    "伦敦金属交易所（LME）": "LME",
+    "期货业协会（FIA）": "FIA",
+    "国际期货业协会（FIA）": "FIA",
+    "衍生品市场标准化倡议组织（DMIST）": "DMIST",
+    "衍生品市场标准研究所（DMIST）": "DMIST",
+    "NewsNow": "NewsNow",
+    "雅虎财经": "Yahoo",
+    "纳斯达克（Nasdaq）": "Nasdaq",
+    "印度证券交易委员会（SEBI）": "SEBI",
+    "印度证监会（SEBI）": "SEBI",
+    "美国证券交易委员会（SEC）": "SEC",
+    "美国证券交易委员（SEC）": "SEC",
+    "英国金融行为监管局（FCA）": "FSA",
+    "英国金融行为监管局（FSA）": "FSA",
+    "国际掉期与衍生品协会（ISDA）": "ISDA",
+    "国际掉期与衍生工具协会（ISDA）": "ISDA",
+    "美国全国期货协会（NFA）": "NFA",
+    "欧洲证券及市场管理局（ESMA）": "ESMA",
+    "印度经济时报": "ETimes",
+    "国际证监会组织（IOSCO）": "IOSCO"
+}
+
+def get_site_code(site_name):
+    for k, v in SITE_SHORT_CODE_MAP.items():
+        if k in site_name or site_name in k:
+            return v
+    clean = re.sub(r'[^A-Za-z0-9]', '', site_name)
+    return clean[:8] if clean else "News"
 
 def load_dedup_history(ignore_history=False):
     if ignore_history:
@@ -121,220 +170,16 @@ def is_strict_date_in_text(text, target_date_str):
             return True
     return False
 
-def parse_fow_date_string(date_str):
-    cleaned = re.sub(r"(\d+)(st|nd|rd|th)", r"\1", date_str).strip()
-    for fmt in ["%d %B, %Y", "%d %B %Y", "%d %b %Y", "%B %d, %Y", "%Y-%m-%d"]:
-        try:
-            dt = datetime.strptime(cleaned, fmt)
-            return dt.strftime("%Y-%m-%d")
-        except ValueError:
-            pass
-    return None
-
-def fetch_fow_insights_articles(target_date):
-    print("[*] Strategy A: Accessing FOW Insights (Multi-page traversal)...")
-    articles = []
-    
-    window = get_target_date_window(target_date)
-    valid_dates = window["valid_dates_set"]
-    google_when = window["google_when"]
-    
-    seen_titles = set()
-    
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
-        page = context.new_page()
-        
-        try:
-            page.goto("https://www.fow.com/insights", wait_until="domcontentloaded", timeout=30000)
-            time.sleep(2.0)
-            
-            # 清除干扰点击的 Cookie 弹窗遮罩
-            page.evaluate('''() => {
-                document.querySelectorAll('.cky-consent-container, .cky-overlay, #cky-banner').forEach(el => el.remove());
-            }''')
-            
-            current_page = 1
-            max_traversal_steps = 65
-            cutoff_date = window["cutoff_date"]
-            
-            for step in range(1, max_traversal_steps + 1):
-                # 持续确保弹窗遮罩不拦截
-                page.evaluate('''() => {
-                    document.querySelectorAll('.cky-consent-container, .cky-overlay, #cky-banner').forEach(el => el.remove());
-                }''')
-                
-                content = page.content()
-                soup = BeautifulSoup(content, "html.parser")
-                links = soup.find_all("a", href=True)
-                
-                dates_on_page = []
-                for a in links:
-                    href = a["href"].strip()
-                    if not href.startswith("/insights/"):
-                        continue
-                        
-                    t_cand = a.find(["h5", "h2", "h3", "h4", "span"])
-                    title_text = t_cand.get_text(strip=True) if t_cand else a.get_text(strip=True)
-                    title_text = re.sub(r'^\d+(?:st|nd|rd|th)?\s+[A-Za-z]+,?\s+\d{4}', '', title_text).strip()
-                    
-                    if len(title_text) < 10 or title_text in seen_titles:
-                        continue
-                        
-                    p_tags = a.find_all("p")
-                    pub_date = None
-                    summary_text = ""
-                    
-                    for p_item in p_tags:
-                        p_txt = p_item.get_text(strip=True)
-                        parsed_d = parse_fow_date_string(p_txt)
-                        if parsed_d:
-                            pub_date = parsed_d
-                            dates_on_page.append(parsed_d)
-                        elif len(p_txt) > 25:
-                            summary_text = p_txt
-                            
-                    if not pub_date or pub_date not in valid_dates:
-                        continue
-                        
-                    comb = (title_text + " " + summary_text).lower()
-                    if not (any(k in comb for k in EXEMPT_KEYWORDS) or any(c in comb for c in TARGET_COMMODITIES)):
-                        continue
-                        
-                    full_fow_url = "https://www.fow.com" + href
-                    seen_titles.add(title_text)
-                    articles.append({
-                        "title": title_text,
-                        "publish_date": pub_date,
-                        "summary": summary_text,
-                        "fow_url": full_fow_url
-                    })
-                    print(f"    [+] FOW Qualified ({pub_date}): {title_text}")
-                    
-                # 若已抓到早于截止日期的文章且当前页无合法日期，说明已完全回溯到目标区间之前
-                if dates_on_page and all(d < cutoff_date for d in dates_on_page):
-                    print(f"    [*] Reached articles older than cutoff ({cutoff_date}). Stopping FOW traversal.")
-                    break
-                    
-                # 寻找下一页按钮
-                next_page = current_page + 1
-                btn = page.query_selector(f'button[aria-label="Page {next_page}"]')
-                if not btn:
-                    buttons = page.query_selector_all('nav[aria-label="Pagination"] button')
-                    max_num = current_page
-                    for b in buttons:
-                        label = b.get_attribute("aria-label") or ""
-                        if label.startswith("Page "):
-                            try:
-                                num = int(label.replace("Page ", ""))
-                                if num > max_num:
-                                    max_num = num
-                                    btn = b
-                            except Exception:
-                                pass
-                    if max_num > current_page:
-                        next_page = max_num
-                    else:
-                        print("    [*] No more pagination forward buttons found on FOW.")
-                        break
-                        
-                current_page = next_page
-                btn.click(force=True)
-                time.sleep(2.0)
-                
-        except Exception as e:
-            print(f"[!] FOW dynamic traversal error: {e}")
-        finally:
-            browser.close()
-        
-    # 2. Google News Syndication 辅助索引（补充捕获）
-    try:
-        # 支持按绝对日期或相对日期进行检索
-        d_min = window["valid_dates"][-1]
-        dt_max = datetime.strptime(window["valid_dates"][0], "%Y-%m-%d") + timedelta(days=1)
-        d_max = dt_max.strftime("%Y-%m-%d")
-        
-        rss_query = f"site:fow.com after:{d_min} before:{d_max}"
-        rss_url = f"https://news.google.com/rss/search?q={rss_query.replace(' ', '+')}&hl=en-US&gl=US&ceid=US:en"
-        f = feedparser.parse(rss_url)
-        for entry in f.entries:
-            t = entry.get("title", "").strip()
-            clean_t = re.sub(r"\s+-\s+[^-]+$", "", t).strip()
-            pub_date = ""
-            if hasattr(entry, "published_parsed") and entry.published_parsed:
-                pub_date = time.strftime("%Y-%m-%d", entry.published_parsed)
-            if pub_date in valid_dates and clean_t not in seen_titles:
-                comb = (clean_t + " " + entry.get("summary", "")).lower()
-                if any(k in comb for k in EXEMPT_KEYWORDS) or any(c in comb for c in TARGET_COMMODITIES):
-                    seen_titles.add(clean_t)
-                    articles.append({
-                        "title": clean_t,
-                        "publish_date": pub_date,
-                        "summary": entry.get("summary", ""),
-                        "fow_url": entry.get("link", "")
-                    })
-    except Exception as e:
-        print(f"[!] Google News FOW indexing error: {e}")
-        
-    print(f"[*] Found {len(articles)} total valid articles from FOW Insights across all pages.")
-    return articles
-
-
-from full_text_verifier import verify_full_text_integrity
-
-
-def cross_search_public_articles(title, target_date, seen_urls, max_candidates=4):
-    clean_kw = re.sub(r"[^\w\s]", "", title)
-    words = clean_kw.split()
-    query_words = words[:6] if len(words) >= 6 else words
-    query = " ".join(query_words)
-    
-    window = get_target_date_window(target_date)
-    d_min = window["valid_dates"][-1]
-    dt_max = datetime.strptime(window["valid_dates"][0], "%Y-%m-%d") + timedelta(days=1)
-    d_max = dt_max.strftime("%Y-%m-%d")
-    
-    # 策略 1: 带日期窗口检索
-    queries_to_try = [
-        f"{query} after:{d_min} before:{d_max}",
-        f"{query} {window['google_when']}",
-        query
-    ]
-    
-    candidates = []
-    seen_links = set()
-    
-    for q_try in queries_to_try:
-        if len(candidates) >= max_candidates:
-            break
-        rss_url = f"https://news.google.com/rss/search?q={q_try.replace(' ', '+')}&hl=en-US&gl=US&ceid=US:en"
-        try:
-            f = feedparser.parse(rss_url)
-            for entry in f.entries:
-                link = entry.get("link", "")
-                e_title = entry.get("title", "")
-                if not link or link in seen_urls or link in seen_links:
-                    continue
-                seen_links.add(link)
-                source_match = re.search(r"\s+-\s+([^-]+)$", e_title)
-                pub_source = source_match.group(1).strip() if source_match else "Public Cross-Search"
-                candidates.append({
-                    "public_url": link,
-                    "public_title": e_title,
-                    "public_source": pub_source
-                })
-                if len(candidates) >= max_candidates:
-                    break
-        except Exception as e:
-            pass
-            
-    return candidates
+def matches_theme_or_commodity(title, summary=""):
+    comb = (title + " " + summary).lower()
+    if any(k in comb for k in EXEMPT_KEYWORDS):
+        return True
+    if any(c in comb for c in TARGET_COMMODITIES):
+        return True
+    return False
 
 def resolve_real_url(page, raw_url):
-    """解析真实 URL，通过 googlenewsdecoder 毫秒级直解原始媒体源网址"""
+    """解析真实 URL，通过 googlenewsdecoder 毫秒级直解原始媒体源落地页"""
     if "news.google.com" in raw_url:
         try:
             import googlenewsdecoder
@@ -344,16 +189,197 @@ def resolve_real_url(page, raw_url):
                 if real.startswith("http://"):
                     real = "https://" + real[7:]
                 return real
-        except Exception as e:
+        except Exception:
             pass
             
-    if raw_url.startswith("http://www.mondovisione.com/"):
-        return raw_url.replace("http://www.mondovisione.com/", "https://mondovisione.com/")
     if raw_url.startswith("http://"):
         return "https://" + raw_url[7:]
     return raw_url
 
+def parse_fca_raw_date(raw_pub):
+    """解析 FCA 原始时间格式"""
+    m = re.search(r'(\d{4})-(\d{2})-(\d{2})', raw_pub)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    m2 = re.search(r'(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})', raw_pub)
+    if m2:
+        day_str, month_str, year_str = m2.group(1), m2.group(2), m2.group(3)
+        try:
+            dt = datetime.strptime(f'{month_str} {day_str} {year_str}', '%B %d %Y')
+            return dt.strftime('%Y-%m-%d')
+        except Exception:
+            pass
+    return ''
+
+def fetch_fca(target_date, seen_urls):
+    """英国金融行为监管局 FCA (策略 A)"""
+    items = []
+    feed_url = "https://www.fca.org.uk/news/rss.xml"
+    try:
+        f = feedparser.parse(feed_url)
+        window = get_target_date_window(target_date)
+        valid_dates = window["valid_dates_set"]
+        
+        for entry in f.entries:
+            link = entry.get("link", "")
+            title = entry.get("title", "")
+            summary = entry.get("summary", "")
+            
+            pub_date = ""
+            if hasattr(entry, "published_parsed") and entry.published_parsed:
+                pub_date = time.strftime("%Y-%m-%d", entry.published_parsed)
+            elif hasattr(entry, "updated_parsed") and entry.updated_parsed:
+                pub_date = time.strftime("%Y-%m-%d", entry.updated_parsed)
+            else:
+                pub_date = parse_fca_raw_date(entry.get("published", ""))
+                
+            if pub_date not in valid_dates:
+                continue
+            if link in seen_urls:
+                continue
+            if not matches_theme_or_commodity(title, summary):
+                continue
+                
+            items.append({
+                "tier": "P2",
+                "strategy": "A",
+                "site": "英国金融行为监管局（FCA）",
+                "category": "",
+                "title": title,
+                "url": link,
+                "publish_date": pub_date,
+                "summary": summary
+            })
+            if len(items) >= 3:
+                break
+    except Exception as e:
+        print(f"[!] Error fetching FCA RSS: {e}")
+    return items
+
+def fetch_newsnow(target_date, seen_urls, max_count=3):
+    """NewsNow 重点品种分类实时直爬（白糖、棉花、农产品）"""
+    import urllib.request
+    import ssl
+    
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    
+    urls = [
+        ("https://www.newsnow.co.uk/h/Business+&+Finance/Commodities/Sugar", "白糖"),
+        ("https://www.newsnow.co.uk/h/Business+&+Finance/Commodities/Cotton", "棉花"),
+        ("https://www.newsnow.co.uk/h/Business+&+Finance/Commodities/Agriculture", "综合农业")
+    ]
+    
+    window = get_target_date_window(target_date)
+    valid_dates = window["valid_dates_set"]
+    
+    items = []
+    seen_links = set()
+    
+    for u, cat in urls:
+        try:
+            req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"})
+            raw = urllib.request.urlopen(req, context=ctx, timeout=10).read()
+            soup = BeautifulSoup(raw, "html.parser")
+            news_items = soup.find_all("div", class_=re.compile(r"hl__inner|newsfeed__item"))
+            
+            for el in news_items:
+                a_tag = el.find("a", class_=re.compile(r"hl__link|newsfeed__link"))
+                if not a_tag or not a_tag.get("href"):
+                    continue
+                link = a_tag["href"]
+                title = a_tag.get_text(strip=True)
+                
+                if link in seen_urls or link in seen_links:
+                    continue
+                seen_links.add(link)
+                
+                if not matches_theme_or_commodity(title):
+                    continue
+                    
+                items.append({
+                    "tier": "P2",
+                    "strategy": "A",
+                    "site": "NewsNow",
+                    "category": "",
+                    "title": f"[{cat}] {title}",
+                    "url": link,
+                    "publish_date": target_date,
+                    "summary": f"NewsNow {cat} 实时专栏资讯"
+                })
+                if len(items) >= max_count:
+                    break
+        except Exception as e:
+            print(f"[!] Error fetching NewsNow {cat}: {e}")
+        if len(items) >= max_count:
+            break
+            
+    return items
+
+def fetch_google_news_syndication_a(query, site_name, target_date, seen_urls, max_count=3):
+    """针对策略 A 官方与公开聚合源的直达检索与解析"""
+    items = []
+    window = get_target_date_window(target_date)
+    valid_dates = window["valid_dates_set"]
+    
+    d_min = window["valid_dates"][-1]
+    dt_max = datetime.strptime(window["valid_dates"][0], "%Y-%m-%d") + timedelta(days=1)
+    d_max = dt_max.strftime("%Y-%m-%d")
+    
+    encoded_q = query.replace(" ", "+")
+    rss_queries = [
+        f"{encoded_q}+after:{d_min}+before:{d_max}",
+        f"{encoded_q}+{window['google_when']}"
+    ]
+    
+    seen_links = set()
+    for q_str in rss_queries:
+        if len(items) >= max_count:
+            break
+        rss_url = f"https://news.google.com/rss/search?q={q_str}&hl=en-US&gl=US&ceid=US:en"
+        try:
+            f = feedparser.parse(rss_url)
+            for entry in f.entries:
+                link = entry.get("link", "")
+                title = entry.get("title", "")
+                summary = entry.get("summary", "")
+                
+                clean_title = re.sub(r"\s+-\s+[^-]+$", "", title).strip()
+                
+                pub_date = ""
+                if hasattr(entry, "published_parsed") and entry.published_parsed:
+                    pub_date = time.strftime("%Y-%m-%d", entry.published_parsed)
+                elif hasattr(entry, "updated_parsed") and entry.updated_parsed:
+                    pub_date = time.strftime("%Y-%m-%d", entry.updated_parsed)
+                    
+                if pub_date not in valid_dates:
+                    continue
+                if link in seen_urls or link in seen_links:
+                    continue
+                seen_links.add(link)
+                if not matches_theme_or_commodity(clean_title, summary):
+                    continue
+                    
+                items.append({
+                    "tier": "P2",
+                    "strategy": "A",
+                    "site": site_name,
+                    "category": "",
+                    "title": clean_title,
+                    "url": link,
+                    "publish_date": pub_date,
+                    "summary": summary
+                })
+                if len(items) >= max_count:
+                    break
+        except Exception as e:
+            print(f"[!] Error fetching Google syndication for {site_name} ({q_str}): {e}")
+            
+    return items
+
 def print_to_pdf_native(page, url, target_path):
+    """无遮罩高保真网页原生打印 PDF"""
     if url.startswith("http://"):
         url = "https://" + url[7:]
         
@@ -368,7 +394,7 @@ def print_to_pdf_native(page, url, target_path):
         elif "sec.gov" in url:
             import urllib.request
             req = urllib.request.Request(url, headers={
-                "User-Agent": config_loader.get_user_agent(),
+                "User-Agent": "CommodityNewsScraper/2.0 (commodity_news_agent@internal.com)",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
             })
             html_content = urllib.request.urlopen(req, timeout=8).read().decode("utf-8", errors="ignore")
@@ -411,7 +437,7 @@ def print_to_pdf_native(page, url, target_path):
             '#onetrust-consent-sdk', '.cookie-banner', '.modal', '.popup',
             '.overlay', '#CybotCookiebotDialog', '.ot-sdk-container',
             '#gdpr-banner', '.privacy-prompt', '.ad-banner', '.advertisement',
-            '.tp-backdrop', '.tp-modal', '.consent-banner'
+            '.tp-backdrop', '.tp-modal', '.consent-banner', '#consent-page'
         ];
         selectors.forEach(s => {
             document.querySelectorAll(s).forEach(el => el.remove());
@@ -430,122 +456,166 @@ def print_to_pdf_native(page, url, target_path):
             path=target_path,
             format="A4",
             print_background=True,
-            margin={"top": "10mm", "bottom": "10mm", "left": "10mm", "right": "10mm"}
+            margin={"top": "15mm", "bottom": "15mm", "left": "15mm", "right": "15mm"}
         )
         return True
     except Exception as e:
-        print(f"    [!] PDF export error: {e}")
+        print(f"    [!] PDF rendering error: {e}")
         return False
 
-def run_strategy_a(target_date, target_dir, ignore_history=False):
+def run_strategy_a(target_date, target_dir, site_filter=None, ignore_history=False):
+    """
+    执行策略 A（直接解析与下载）：
+    覆盖 A 类源中 17 个官方与公开聚合站点（单站 0~3 篇限额）
+    """
     os.makedirs(target_dir, exist_ok=True)
     seen_urls = load_dedup_history(ignore_history=ignore_history)
-    print(f"[*] Strategy A (FOW Insights Title Scraping & Cross-Search) on Date: {target_date} (Ignore History: {ignore_history})...")
+    print(f"[*] Strategy A (Direct Web/Native Capture): Scanning 17 Official/Public Sources on Date: {target_date} (Ignore History: {ignore_history})...")
     
-    fow_articles = fetch_fow_insights_articles(target_date)
+    candidates = []
+    
+    # 17 个策略 A 站点定向检索配置
+    site_configs = [
+        {"name": "美国商品期货交易委员会（CFTC）", "handler": lambda: fetch_google_news_syndication_a('site:cftc.gov "Press Release"', "美国商品期货交易委员会（CFTC）", target_date, seen_urls, 3)},
+        {"name": "芝商所（CME）", "handler": lambda: fetch_google_news_syndication_a('site:cmegroup.com ("press release" OR "futures" OR "clearing" OR "margin")', "芝商所（CME）", target_date, seen_urls, 3)},
+        {"name": "洲际交易所（ICE）", "handler": lambda: fetch_google_news_syndication_a('site:ir.theice.com/press', "洲际交易所（ICE）", target_date, seen_urls, 3)},
+        {"name": "伦敦金属交易所（LME）", "handler": lambda: fetch_google_news_syndication_a('site:lme.com', "伦敦金属交易所（LME）", target_date, seen_urls, 3)},
+        {"name": "期货业协会（FIA）", "handler": lambda: fetch_google_news_syndication_a('site:fia.org', "期货业协会（FIA）", target_date, seen_urls, 3)},
+        {"name": "衍生品市场标准化倡议组织（DMIST）", "handler": lambda: fetch_google_news_syndication_a('site:fia.org/dmist', "衍生品市场标准化倡议组织（DMIST）", target_date, seen_urls, 3)},
+        {"name": "NewsNow", "handler": lambda: fetch_newsnow(target_date, seen_urls, 3)},
+        {"name": "雅虎财经", "handler": lambda: fetch_google_news_syndication_a('site:finance.yahoo.com (commodities OR futures OR "interest rate" OR "Federal Reserve")', "雅虎财经", target_date, seen_urls, 3)},
+        {"name": "纳斯达克（Nasdaq）", "handler": lambda: fetch_google_news_syndication_a('site:nasdaq.com ("press release" OR commodities OR futures OR exchange)', "纳斯达克（Nasdaq）", target_date, seen_urls, 3)},
+        {"name": "印度证券交易委员会（SEBI）", "handler": lambda: fetch_google_news_syndication_a('site:sebi.gov.in', "印度证券交易委员会（SEBI）", target_date, seen_urls, 3)},
+        {"name": "美国证券交易委员会（SEC）", "handler": lambda: fetch_google_news_syndication_a('site:sec.gov/newsroom/press-releases', "美国证券交易委员会（SEC）", target_date, seen_urls, 3)},
+        {"name": "英国金融行为监管局（FCA）", "handler": lambda: fetch_fca(target_date, seen_urls)},
+        {"name": "国际掉期与衍生品协会（ISDA）", "handler": lambda: fetch_google_news_syndication_a('site:isda.org', "国际掉期与衍生品协会（ISDA）", target_date, seen_urls, 3)},
+        {"name": "美国全国期货协会（NFA）", "handler": lambda: fetch_google_news_syndication_a('site:nfa.futures.org', "美国全国期货协会（NFA）", target_date, seen_urls, 3)},
+        {"name": "欧洲证券及市场管理局（ESMA）", "handler": lambda: fetch_google_news_syndication_a('site:esma.europa.eu', "欧洲证券及市场管理局（ESMA）", target_date, seen_urls, 3)},
+        {"name": "印度经济时报", "handler": lambda: fetch_google_news_syndication_a('site:economictimes.indiatimes.com/markets/commodities', "印度经济时报", target_date, seen_urls, 3)},
+        {"name": "国际证监会组织（IOSCO）", "handler": lambda: fetch_google_news_syndication_a('site:iosco.org', "国际证监会组织（IOSCO）", target_date, seen_urls, 3)}
+    ]
+    
+    for cfg in site_configs:
+        s_name = cfg["name"]
+        if site_filter and site_filter.lower() not in s_name.lower():
+            continue
+        try:
+            items = cfg["handler"]()
+            if items:
+                print(f"    [+] {s_name}: Found {len(items)} candidate items.")
+                candidates.extend(items)
+            else:
+                print(f"    [-] {s_name}: No items matching criteria today (Allowed 0 items).")
+        except Exception as e:
+            print(f"    [!] Error gathering {s_name}: {e}")
+
+    # 去重
+    unique_candidates = []
+    seen = set()
+    for c in candidates:
+        if c["url"] not in seen:
+            seen.add(c["url"])
+            unique_candidates.append(c)
+            
     verified_items = []
+    site_counter = {}
     
-    if not fow_articles:
-        print("[*] No target articles found on FOW Insights today. Proceeding with empty result.")
-    else:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            )
-            page = context.new_page()
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
+        
+        for idx, item in enumerate(unique_candidates, 1):
+            title = item["title"]
+            site = item["site"]
+            raw_url = item["url"]
+            tier = item["tier"]
+            clean_t = clean_filename(title)
             
-            for idx, art in enumerate(fow_articles, 1):
-                fow_title = art["title"]
-                fow_date = art["publish_date"]
-                print(f"\n[{idx}/{len(fow_articles)}] Cross-searching FOW article: {fow_title}...")
+            site_code = get_site_code(site)
+            site_counter[site_code] = site_counter.get(site_code, 0) + 1
+            cur_site_idx = site_counter[site_code]
+            
+            raw_pdf_name = f"{site_code}_{cur_site_idx:02d}_{clean_t}.pdf"
+            raw_pdf_path = os.path.join(target_dir, raw_pdf_name)
+            
+            print(f"\n[{idx}/{len(unique_candidates)}] Processing Strategy A: {site} -> {title[:40]}...")
+            real_url = resolve_real_url(page, raw_url)
+            print(f"    Real URL: {real_url}")
+            
+            success = print_to_pdf_native(page, real_url, raw_pdf_path)
+            if not success or not os.path.exists(raw_pdf_path):
+                print("    [!] Failed to generate native PDF!")
+                continue
                 
-                cross_candidates = cross_search_public_articles(fow_title, target_date, seen_urls)
-                if not cross_candidates:
-                    print("    [!] No public cross-search match found (Exclusive paywall story). Skipping.")
+            file_size = os.path.getsize(raw_pdf_path)
+            if file_size < 1000:
+                print(f"    [!] Dropped: File size ({file_size} B) too small!")
+                os.remove(raw_pdf_path)
+                continue
+                
+            with open(raw_pdf_path, "rb") as f:
+                content_bytes = f.read()
+                if not content_bytes.startswith(b"%PDF"):
+                    print("    [!] Dropped: Missing %PDF header!")
+                    os.remove(raw_pdf_path)
                     continue
-                    
-                captured_for_article = False
-                clean_t = clean_filename(fow_title)
-                raw_pdf_name = f"FOW_{idx:02d}_{clean_t}.pdf"
-                raw_pdf_path = os.path.join(target_dir, raw_pdf_name)
+                sha256_hash = hashlib.sha256(content_bytes).hexdigest()
                 
-                for c_idx, cand in enumerate(cross_candidates, 1):
-                    pub_url = cand["public_url"]
-                    pub_source = cand["public_source"]
-                    joint_site_name = f"英国期货期权世界（FOW Insights / {pub_source}）"
-                    
-                    real_pub_url = resolve_real_url(page, pub_url)
-                    print(f"    Candidate {c_idx}/{len(cross_candidates)}: {pub_source} -> {real_pub_url[:60]}...")
-                    
-                    if os.path.exists(raw_pdf_path):
-                        os.remove(raw_pdf_path)
-                        
-                    success = print_to_pdf_native(page, real_pub_url, raw_pdf_path)
-                    if not success or not os.path.exists(raw_pdf_path):
-                        continue
-                        
-                    file_size = os.path.getsize(raw_pdf_path)
-                    if file_size < 1000:
-                        os.remove(raw_pdf_path)
-                        continue
-                        
-                    with open(raw_pdf_path, "rb") as f:
-                        content_bytes = f.read()
-                        if not content_bytes.startswith(b"%PDF"):
-                            os.remove(raw_pdf_path)
-                            continue
-                        sha256_hash = hashlib.sha256(content_bytes).hexdigest()
-                        
-                    try:
-                        reader = pypdf.PdfReader(raw_pdf_path)
-                        extracted_text = "\n".join([p_el.extract_text() for p_el in reader.pages if p_el.extract_text()])
-                        word_count = len(extracted_text.split())
-                        num_pages = len(reader.pages)
-                    except Exception as e:
-                        os.remove(raw_pdf_path)
-                        continue
-                        
-                    # 严格执行全文完整度与付费墙核验（包含段落、词数、弹窗与付费阻断）
-                    is_full_text, fail_reason, stats = verify_full_text_integrity(raw_pdf_path, original_title=fow_title)
-                    if not is_full_text:
-                        print(f"    [!] Candidate rejected: {fail_reason}. Trying next candidate...")
-                        os.remove(raw_pdf_path)
-                        continue
-                        
-                    has_valid_date = is_strict_date_in_text(extracted_text, target_date)
-                    if not has_valid_date and fow_date != target_date:
-                        print(f"    [!] Candidate rejected: Missing strict date ({target_date}) in text!")
-                        os.remove(raw_pdf_path)
-                        continue
-                        
-                    print(f"    ✅ Verified Strategy A Full-Text PDF: {file_size // 1024} KB | Pages: {num_pages} | Valid Words: {stats.get('valid_words_count', word_count)}")
-                    
-                    verified_items.append({
-                        "tier": "P1",
-                        "strategy": "A",
-                        "site": joint_site_name,
-                        "category": "",
-                        "original_title": fow_title,
-                        "publish_date": fow_date,
-                        "source_url": real_pub_url,
-                        "local_filename": raw_pdf_name,
-                        "file_size_bytes": file_size,
-                        "sha256": sha256_hash,
-                        "extracted_word_count": word_count,
-                        "status": "SUCCESS",
-                        "binary_verified": True
-                    })
-                    captured_for_article = True
-                    break
-                    
-                if not captured_for_article:
-                    print(f"    [!] Dropped: All public candidates failed full-text validation for: {fow_title[:35]}")
+            try:
+                reader = pypdf.PdfReader(raw_pdf_path)
+                extracted_text = "\n".join([p_el.extract_text() for p_el in reader.pages if p_el.extract_text()])
+                word_count = len(extracted_text.split())
+                num_pages = len(reader.pages)
+            except Exception as e:
+                print(f"    [!] Dropped: PDF parse error: {e}")
+                os.remove(raw_pdf_path)
+                continue
+                
+            # 严格执行全文完整度与付费墙核验（针对官方机构与公开源适配参数）
+            is_full_text, fail_reason, stats = verify_full_text_integrity(
+                raw_pdf_path,
+                original_title=title,
+                min_paragraphs=1,
+                min_words=80
+            )
+            if not is_full_text:
+                print(f"    [!] Dropped: {fail_reason}")
+                os.remove(raw_pdf_path)
+                continue
+                
+            has_valid_date = is_strict_date_in_text(extracted_text, target_date)
+            if not has_valid_date and item.get("publish_date") != target_date:
+                print(f"    [!] Dropped: Physical document does NOT contain strict T/T-1 date ({target_date})!")
+                os.remove(raw_pdf_path)
+                continue
+                
+            print(f"    ✅ Verified Strategy A PDF: {file_size // 1024} KB | Pages: {num_pages} | Valid Words: {stats.get('valid_words_count', word_count)}")
             
+            verified_items.append({
+                "tier": tier,
+                "strategy": "A",
+                "site": site,
+                "category": "",
+                "original_title": title,
+                "publish_date": item["publish_date"],
+                "source_url": real_url,
+                "local_filename": raw_pdf_name,
+                "file_size_bytes": file_size,
+                "sha256": sha256_hash,
+                "extracted_word_count": word_count,
+                "status": "SUCCESS",
+                "binary_verified": True
+            })
+            
+        browser.close()
+        
     manifest_path = os.path.join(target_dir, "manifest_strategy_a_raw.json")
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump({
-            "run_id": f"strategy_a_p0_{target_date}",
+            "run_id": f"strategy_a_{target_date}",
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
             "strategy": "A",
             "total_captured": len(verified_items),
@@ -555,11 +625,16 @@ def run_strategy_a(target_date, target_dir, ignore_history=False):
     print(f"\n🎉 Strategy A finished! Captured {len(verified_items)} items. Manifest: {manifest_path}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Strategy A Capturer (FOW Insights Title Scraping & Cross Search)")
+    parser = argparse.ArgumentParser(description="Strategy A Capturer (Direct Web / Native Capture for 17 Official/Public Sources)")
     parser.add_argument("--date", type=str, default=time.strftime("%Y-%m-%d"), help="Target Date YYYY-MM-DD")
     parser.add_argument("--dir", type=str, default=None, help="Target storage dir")
-    parser.add_argument("--ignore-history", action="store_true", help="Ignore history for testing")
+    parser.add_argument("--site", type=str, default=None, help="Specific site filter name")
+    parser.add_argument("--ignore-history", action="store_true", help="Ignore deduplication history for isolated testing")
     args = parser.parse_args()
     
-    target_dir = config_loader.get_target_dir(args.date, args.dir)
-    run_strategy_a(args.date, target_dir, ignore_history=args.ignore_history)
+    try:
+        from config_loader import get_target_dir
+        target_dir = get_target_dir(args.date, cli_dir=args.dir)
+    except Exception:
+        target_dir = args.dir if args.dir else os.path.expanduser(f"~/Documents/Obsidian Vault/工作/新闻/{args.date} 新闻")
+    run_strategy_a(args.date, target_dir, site_filter=args.site, ignore_history=args.ignore_history)

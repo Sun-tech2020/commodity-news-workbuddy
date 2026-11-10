@@ -248,27 +248,46 @@ def merge_and_finalize_manifest(target_dir, update_history=True):
         return " ".join(words[:6]) if len(words) >= 6 else " ".join(words)
 
     def is_same_event(title1, title2):
-        def get_tokens(t):
+        synonym_map = {
+            "futures": "derivatives", "options": "derivatives", "swap": "derivatives", "swaps": "derivatives",
+            "eight": "8", "sanctions": "sanction", "charges": "sanction", "rules": "rule",
+            "tokenisation": "tokenization", "digital": "crypto"
+        }
+        def extract_core_features(t):
             t_clean = re.sub(r"[^\w\s]", " ", t.lower())
-            words = set([w for w in t_clean.split() if len(w) > 2 and w not in ["the", "for", "and", "with", "from", "that", "this", "about", "into", "update"]])
-            if "8" in words or "eight" in words:
-                words.add("8")
-                words.add("eight")
-            return words
-        tok1 = get_tokens(title1)
-        tok2 = get_tokens(title2)
+            words = [w for w in t_clean.split() if len(w) > 2 and w not in [
+                "the", "for", "and", "with", "from", "that", "this", "about", "into", "update",
+                "joins", "push", "launches", "launch", "reports", "report", "plans", "says", "announces"
+            ]]
+            return set(synonym_map.get(w, w) for w in words)
+            
+        tok1 = extract_core_features(title1)
+        tok2 = extract_core_features(title2)
         if not tok1 or not tok2:
             return False
+            
         inter = tok1.intersection(tok2)
         union = tok1.union(tok2)
-        if not union:
-            return False
-        jaccard = len(inter) / len(union)
-        return jaccard >= 0.55
+        jaccard = len(inter) / len(union) if union else 0
+        
+        # 常见关键机构锚点
+        institutions = ["cftc", "sec", "ice", "cme", "cboe", "lseg", "nasdaq", "eba", "esma", "fca", "kalshi", "isda", "fia"]
+        shared_inst = [inst for inst in institutions if inst in tok1 and inst in tok2]
+        
+        # 1. 相同机构且有 2 个以上关键词交集（如 ice + wind + derivatives）
+        if shared_inst and len(inter) >= 2:
+            return True
+            
+        # 2. Jaccard 相似度达标
+        if jaccard >= 0.45:
+            return True
+            
+        return False
 
     # URL 去重、跨源同事件去重、分类校准与物理文件存在性复核
     seen_urls = set()
     deduped_items = []
+    strat_rank = {"A": 1, "C": 2, "B": 3}
     
     for item in all_raw_items:
         url = item.get("source_url") or item.get("public_url") or item.get("fow_url")
@@ -293,9 +312,12 @@ def merge_and_finalize_manifest(target_dir, update_history=True):
                 
         if duplicate_idx is not None:
             prev_item = deduped_items[duplicate_idx]
-            if strat == "A" and prev_item.get("strategy") != "A":
-                # 官方源替换第三方转载
-                print(f"    [*] 跨源事件去重：用官方源 [{item.get('site')}] 替代第三方转载 [{prev_item.get('site')}]: {item_title[:45]}")
+            prev_rank = strat_rank.get(prev_item.get("strategy", "B"), 3)
+            curr_rank = strat_rank.get(strat, 3)
+            
+            if curr_rank < prev_rank:
+                # 高优先级策略替换低优先级策略（A 优于 C 优于 B）
+                print(f"    [*] 跨源事件去重：用高优先级 [{item.get('site')} / 策略{strat}] 替代低优先级 [{prev_item.get('site')} / 策略{prev_item.get('strategy')}]: {item_title[:45]}")
                 old_pdf = prev_item.get("local_filename")
                 if old_pdf and os.path.exists(os.path.join(target_dir, old_pdf)):
                     try:
@@ -306,8 +328,7 @@ def merge_and_finalize_manifest(target_dir, update_history=True):
                 deduped_items[duplicate_idx] = item
                 seen_urls.add(url)
             else:
-                print(f"    [*] 跨源事件去重：跳过重复事件报道 [{item.get('site')}]: {item_title[:45]}")
-                # 尝试删除后来的第三方重复 PDF 文件
+                print(f"    [*] 跨源事件去重：跳过低优先级重复报道 [{item.get('site')} / 策略{strat}]: {item_title[:45]}")
                 curr_pdf = item.get("local_filename")
                 if curr_pdf and os.path.exists(os.path.join(target_dir, curr_pdf)):
                     try:

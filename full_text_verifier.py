@@ -164,30 +164,42 @@ def verify_full_text_integrity(
     if total_valid_words < min_words:
         return False, f"Insufficient valid body word count: found {total_valid_words} words, required >= {min_words}", stats
         
-    # 4. 标题核心实体关联度审计（防 404 / 纯空白页 / 抓错文章）
-    #    旧实现仅要求「命中 1 个关键词」即放行，导致聚合站(如 Stock Titan 的 SEC 申报页)
-    #    只要出现机构名(如 CME)就能通过，正文实为另一篇无关文章。
-    #    改为比例判定：需命中至少 40% 的核心实体词，且不少于 2 个（关键词少于 3 个时放宽至 1 个）。
+    # 4. 标题核心实体与主题强锚定审计（防张冠李戴、猫砂盆报告、无关选举报道）
     if original_title:
-        STOPWORDS = ["with", "that", "this", "from", "over", "into", "plans", "adds", "eyes",
-                     "been", "have", "will", "would", "could", "their", "there", "about", "after"]
-        clean_kw = [w.lower() for w in re.findall(r"\b[A-Za-z0-9]{4,}\b", original_title)
-                    if w.lower() not in STOPWORDS]
-        if clean_kw:
-            matched_kw = [k for k in clean_kw if k in raw_text_lower]
-            if len(clean_kw) >= 3:
-                required = max(2, -(-len(clean_kw) * 40 // 100))  # ceil(40%)
-            else:
-                required = 1
-            stats["title_keywords"] = clean_kw
-            stats["title_matched"] = matched_kw
-            if len(matched_kw) < required:
-                return False, (
-                    f"Document text insufficiently relevant to original title "
-                    f"({len(matched_kw)}/{len(clean_kw)} keywords matched, required >= {required}; "
-                    f"matched={matched_kw})"
-                ), stats
+        # 1) 绝对违禁离谱消费品与宠物用品词拦截
+        bizarre_words = ["cat litter", "litter box", "pet food", "diaper", "mattress", "cosmetics", "vacuum cleaner"]
+        for bw in bizarre_words:
+            if bw in raw_text_lower:
+                return False, f"Document contains bizarre off-topic content ('{bw}')", stats
 
+        # 2) 提取标题中的核心实体锚点词（Named Entities & Distinctive Keywords）
+        generic_words = {
+            "with", "that", "this", "from", "over", "into", "plans", "adds", "eyes", "says",
+            "market", "markets", "report", "reports", "global", "update", "updates", "trade",
+            "trading", "first", "november", "october", "daily", "financial", "growth",
+            "week", "month", "year", "series", "round", "volume", "volumes", "high", "record"
+        }
+        title_tokens = re.findall(r"\b[A-Za-z0-9\-\']+\b", original_title)
+        
+        distinctive_entities = []
+        for tok in title_tokens:
+            t_low = tok.lower()
+            if len(tok) < 3 or t_low in generic_words:
+                continue
+            if tok[0].isupper() or t_low in ["crypto", "swaps", "tokenisation", "tokenization", "ets2", "derivatives", "repo", "futures", "options"]:
+                distinctive_entities.append(t_low)
+                
+        if distinctive_entities:
+            matched_entities = [ent for ent in distinctive_entities if ent in raw_text_lower]
+            if len(matched_entities) == 0:
+                return False, f"Document text missing core title entity anchors: {distinctive_entities}", stats
+        else:
+            clean_kw = [w.lower() for w in re.findall(r"\b[A-Za-z0-9]{4,}\b", original_title) if w.lower() not in generic_words]
+            if clean_kw:
+                matched_kw = [k for k in clean_kw if k in raw_text_lower]
+                if len(matched_kw) == 0:
+                    return False, f"Document text has zero relevance to original title keywords ({clean_kw})", stats
+                
     return True, f"Verified Full Text ({len(valid_paras)} paragraphs, {total_valid_words} valid words)", stats
 
 def audit_and_cleanup_directory(target_dir: str, delete_invalid: bool = True) -> Dict[str, Any]:

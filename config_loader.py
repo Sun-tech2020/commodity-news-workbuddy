@@ -51,6 +51,11 @@ def get_target_dir(target_date, category_suffix="", cli_dir=None):
         os.makedirs(final_dir, exist_ok=True)
         return final_dir
     
+    if category_suffix:
+        cleaned = category_suffix.strip().strip("()（）[]【】")
+        if cleaned:
+            category_suffix = f"（{cleaned}）"
+            
     base_root = get_obsidian_news_root()
     folder_name = f"{target_date} 新闻{category_suffix}"
     final_dir = os.path.join(base_root, folder_name)

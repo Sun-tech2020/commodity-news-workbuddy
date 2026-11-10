@@ -564,8 +564,20 @@ def print_to_pdf_native(page, url, target_path):
         else:
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=12000)
-            except Exception:
-                page.goto(url, wait_until="commit", timeout=8000)
+            except Exception as e_nav:
+                if any(err in str(e_nav) for err in ["ERR_HTTP2_PROTOCOL_ERROR", "net::ERR_"]):
+                    try:
+                        import urllib.request
+                        req = urllib.request.Request(url, headers={
+                            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+                        })
+                        html_bytes = urllib.request.urlopen(req, timeout=10).read()
+                        page.set_content(html_bytes.decode("utf-8", errors="ignore"), wait_until="domcontentloaded")
+                    except Exception:
+                        page.goto(url, wait_until="commit", timeout=8000)
+                else:
+                    page.goto(url, wait_until="commit", timeout=8000)
                 
         # 针对 Yahoo / GDPR 弹窗自动点击同意
         if any(w in page.url for w in ["consent.yahoo.com", "guce.yahoo.com", "consent.google.com"]):
@@ -688,7 +700,15 @@ def run_strategy_a(target_date, target_dir, site_filter=None, ignore_history=Fal
     site_counter = {}
     
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-http2",
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox"
+            ]
+        )
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )

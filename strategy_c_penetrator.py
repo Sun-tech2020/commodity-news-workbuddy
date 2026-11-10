@@ -61,7 +61,7 @@ EXEMPT_KEYWORDS = [
     "new contract", "launch", "listing", "index", "market maker",
     "partnership", "mou", "alliance", "acquisition", "clearing", "settlement",
     "prediction market", "event contract", "kalshi", "polymarket", "forecastex",
-    "trading volume", "adv", "open interest", "exchange", "cme", "bloomberg", "spglobal"
+    "trading volume", "adv", "open interest", "exchange", "cme", "derivatives", "futures", "options"
 ]
 
 def load_dedup_history():
@@ -121,10 +121,10 @@ def is_strict_date_in_text(text, target_date_str):
             dt.strftime("%d/%m/%Y"),
             dt.strftime("%m/%d/%Y"),
             dt.strftime("%d-%m-%Y"),
-            rf"\b{dt.strftime('%B')}\s+{d_str},?\s+{dt.year}\b",
-            rf"\b{dt.strftime('%b')}\.?\s+{d_str},?\s+{dt.year}\b",
-            rf"\b{d_str}(?:st|nd|rd|th)?\s+{dt.strftime('%B')},?\s+{dt.year}\b",
-            rf"\b{d_str}(?:st|nd|rd|th)?\s+{dt.strftime('%b')}\.?,?\s+{dt.year}\b",
+            rf"\b{dt.strftime('%B')}\s+0?{d_str},?\s+{dt.year}\b",
+            rf"\b{dt.strftime('%b')}\.?\s+0?{d_str},?\s+{dt.year}\b",
+            rf"\b0?{d_str}(?:st|nd|rd|th)?\s+{dt.strftime('%B')},?\s+{dt.year}\b",
+            rf"\b0?{d_str}(?:st|nd|rd|th)?\s+{dt.strftime('%b')}\.?,?\s+{dt.year}\b",
         ])
     
     for pat in patterns:
@@ -132,8 +132,15 @@ def is_strict_date_in_text(text, target_date_str):
             return True
     return False
 
+EXCLUDE_KEYWORDS = [
+    "health-law", "food aid", "snap benefits", "immigrant", "immigrants",
+    "judicial push", "appeals court nominee", "election fraud", "voter fraud"
+]
+
 def matches_theme_or_commodity(title, summary=""):
     comb = (title + " " + summary).lower()
+    if any(ex in comb for ex in EXCLUDE_KEYWORDS):
+        return False
     if any(k in comb for k in EXEMPT_KEYWORDS):
         return True
     if any(c in comb for c in TARGET_COMMODITIES):

@@ -1,1 +1,16 @@
-{"last_updated": "2026-11-10T09:00:00+08:00", "urls": [], "items": []}
+{
+  "last_updated": "2026-11-10T08:53:27+08:00",
+  "urls": [
+    "https://mondovisione.com/media-and-resources/news/central-bank-independence-in-todays-world-speech-by-andrew-bailey-governor-2026119/"
+  ],
+  "items": [
+    {
+      "tier": "P1",
+      "strategy": "B",
+      "site": "Mondo Visione",
+      "title": "Central Bank Independence In Today’s World - Speech By Andrew Bailey, Governor, Bank Of England, Given At The SIAF Lecture Series, Zurich University",
+      "url": "https://mondovisione.com/media-and-resources/news/central-bank-independence-in-todays-world-speech-by-andrew-bailey-governor-2026119/",
+      "date": "2026-11-09"
+    }
+  ]
+}

@@ -150,6 +150,7 @@ def classify_item_category(title, site, orig_cat=None):
     exch_entities = [
         r"\bcme\b", r"\bice\b", r"\blme\b", r"\beurex\b", r"\bcboe\b", r"\bsgx\b", r"\bhkex\b",
         r"\bose\b", r"\bjpx\b", r"\btmx\b", r"\beuronext\b", r"\bb3\b", r"\beex\b", r"\bmiax\b", r"\btfex\b", r"\bdtcc\b",
+        r"\bnasdaq\b", r"\blseg\b", r"\blondon stock exchange\b",
         r"\bcme group\b", r"\bintercontinental exchange\b", r"\blondon metal exchange\b", r"\bchicago mercantile exchange\b",
         r"\bosaka exchange\b", r"\bjapan exchange group\b", r"\btmx group\b", r"\bdeutsche börse\b", r"\bdeutsche boerse\b",
         r"\bclearinghouse\b", r"\bclearing house\b"
@@ -161,7 +162,8 @@ def classify_item_category(title, site, orig_cat=None):
         r"\bmargin requirement\b", r"\btrading hours\b", r"\bmatching engine\b", r"\bdata feed\b", r"\bappoints\b", r"\bchief executive\b", r"\bceo\b",
         r"\bbond offering\b", r"\bsenior notes\b", r"\bdebenture\b", r"\boffering\b", r"\bprivate placement\b", r"\brefinery\b", r"\brefiner\b", r"\bmaintenance\b",
         r"\btokenization member\b", r"\bpartner\b", r"\bpartnership\b",
-        "交易所", "新合约", "挂牌", "上市", "做市商", "日均交易量", "成交量", "持仓量", "交割", "清算", "交易时段", "任命", "发债", "债券", "代币化"
+        r"\bshares\b", r"\bshare repurchase\b", r"\btransaction in own shares\b", r"\bcfo\b", r"\bevp\b", r"\bpresent\b", r"\bpresentation\b", r"\bconference\b",
+        "交易所", "新合约", "挂牌", "上市", "做市商", "日均交易量", "成交量", "持仓量", "交割", "清算", "交易时段", "任命", "发债", "债券", "代币化", "回购", "峰会"
     ]
     
     has_exch_entity = any(re.search(e, title_lower) for e in exch_entities)
@@ -175,7 +177,7 @@ def classify_item_category(title, site, orig_cat=None):
     # 3. 市场动态判定（兜底）
     return "二、市场动态"
 
-def merge_and_finalize_manifest(target_dir):
+def merge_and_finalize_manifest(target_dir, update_history=True):
     print(f"[*] Scanning target directory for raw manifests: {target_dir}")
     
     raw_files = [f for f in os.listdir(target_dir) if f.startswith("manifest_") and f.endswith("_raw.json")]
@@ -356,15 +358,19 @@ def merge_and_finalize_manifest(target_dir):
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(final_manifest, f, indent=2, ensure_ascii=False)
         
-    # 更新全局跨日去重历史库
-    update_global_downloaded_history(final_items)
-    
+    # 更新全局跨日去重历史库（测试模式可跳过）
+    if update_history:
+        update_global_downloaded_history(final_items)
+    else:
+        print("[*] Testing mode: Skipped updating global deduplication history.")
+        
     print(f"\n🎉 Successfully merged and generated download_manifest.json with {len(final_items)} synchronized items!")
     return final_manifest
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Merge raw manifests into final download_manifest.json")
     parser.add_argument("--dir", type=str, default=None, help="Target directory")
+    parser.add_argument("--no-history-update", action="store_true", help="Skip updating global deduplication history for isolated testing")
     args = parser.parse_args()
     
     try:
@@ -372,4 +378,4 @@ if __name__ == "__main__":
         target_dir = get_target_dir(time.strftime("%Y-%m-%d"), cli_dir=args.dir)
     except Exception:
         target_dir = args.dir if args.dir else os.path.expanduser(f"~/Documents/Obsidian Vault/工作/新闻/{time.strftime('%Y-%m-%d')} 新闻")
-    merge_and_finalize_manifest(target_dir)
+    merge_and_finalize_manifest(target_dir, update_history=not args.no_history_update)

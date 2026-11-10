@@ -161,10 +161,10 @@ def is_strict_date_in_text(text, target_date_str):
             dt.strftime("%d/%m/%Y"),
             dt.strftime("%m/%d/%Y"),
             dt.strftime("%d-%m-%Y"),
-            rf"\b{dt.strftime('%B')}\s+{d_str},?\s+{dt.year}\b",
-            rf"\b{dt.strftime('%b')}\.?\s+{d_str},?\s+{dt.year}\b",
-            rf"\b{d_str}(?:st|nd|rd|th)?\s+{dt.strftime('%B')},?\s+{dt.year}\b",
-            rf"\b{d_str}(?:st|nd|rd|th)?\s+{dt.strftime('%b')}\.?,?\s+{dt.year}\b",
+            rf"\b{dt.strftime('%B')}\s+0?{d_str},?\s+{dt.year}\b",
+            rf"\b{dt.strftime('%b')}\.?\s+0?{d_str},?\s+{dt.year}\b",
+            rf"\b0?{d_str}(?:st|nd|rd|th)?\s+{dt.strftime('%B')},?\s+{dt.year}\b",
+            rf"\b0?{d_str}(?:st|nd|rd|th)?\s+{dt.strftime('%b')}\.?,?\s+{dt.year}\b",
         ])
     
     for pat in patterns:
@@ -632,16 +632,14 @@ def run_strategy_a(target_date, target_dir, site_filter=None, ignore_history=Fal
     # 17 个策略 A 站点定向检索配置（采用官方直采 + Google 聚合双轨高可用信道）
     def get_cftc_items():
         res = fetch_cftc_official(target_date, seen_urls, 3)
-        if len(res) < 3:
-            g_res = fetch_google_news_syndication_a('site:cftc.gov "Press Release"', "美国商品期货交易委员会（CFTC）", target_date, seen_urls, 3 - len(res))
-            res.extend(g_res)
+        if len(res) == 0:
+            res = fetch_google_news_syndication_a('site:cftc.gov "Press Release"', "美国商品期货交易委员会（CFTC）", target_date, seen_urls, 3)
         return res
         
     def get_sec_items():
         res = fetch_sec_official(target_date, seen_urls, 3)
-        if len(res) < 3:
-            g_res = fetch_google_news_syndication_a('site:sec.gov/newsroom/press-releases', "美国证券交易委员会（SEC）", target_date, seen_urls, 3 - len(res))
-            res.extend(g_res)
+        if len(res) == 0:
+            res = fetch_google_news_syndication_a('site:sec.gov/newsroom/press-releases', "美国证券交易委员会（SEC）", target_date, seen_urls, 3)
         return res
 
     site_configs = [
@@ -695,6 +693,7 @@ def run_strategy_a(target_date, target_dir, site_filter=None, ignore_history=Fal
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
         page = context.new_page()
+        processed_real_urls = set()
         
         for idx, item in enumerate(unique_candidates, 1):
             title = item["title"]
@@ -713,6 +712,11 @@ def run_strategy_a(target_date, target_dir, site_filter=None, ignore_history=Fal
             print(f"\n[{idx}/{len(unique_candidates)}] Processing Strategy A: {site} -> {title[:40]}...")
             real_url = resolve_real_url(page, raw_url)
             print(f"    Real URL: {real_url}")
+            
+            if real_url in processed_real_urls:
+                print(f"    [*] Duplicate resolved URL ({real_url}), skipping to avoid duplicate processing.")
+                continue
+            processed_real_urls.add(real_url)
             
             success = print_to_pdf_native(page, real_url, raw_pdf_path)
             if not success or not os.path.exists(raw_pdf_path):

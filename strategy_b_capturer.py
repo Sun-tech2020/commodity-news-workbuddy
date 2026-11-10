@@ -115,10 +115,10 @@ def is_strict_date_in_text(text, target_date_str):
             dt.strftime("%d/%m/%Y"),
             dt.strftime("%m/%d/%Y"),
             dt.strftime("%d-%m-%Y"),
-            rf"\b{dt.strftime('%B')}\s+{d_str},?\s+{dt.year}\b",
-            rf"\b{dt.strftime('%b')}\.?\s+{d_str},?\s+{dt.year}\b",
-            rf"\b{d_str}(?:st|nd|rd|th)?\s+{dt.strftime('%B')},?\s+{dt.year}\b",
-            rf"\b{d_str}(?:st|nd|rd|th)?\s+{dt.strftime('%b')}\.?,?\s+{dt.year}\b",
+            rf"\b{dt.strftime('%B')}\s+0?{d_str},?\s+{dt.year}\b",
+            rf"\b{dt.strftime('%b')}\.?\s+0?{d_str},?\s+{dt.year}\b",
+            rf"\b0?{d_str}(?:st|nd|rd|th)?\s+{dt.strftime('%B')},?\s+{dt.year}\b",
+            rf"\b0?{d_str}(?:st|nd|rd|th)?\s+{dt.strftime('%b')}\.?,?\s+{dt.year}\b",
         ])
     
     for pat in patterns:

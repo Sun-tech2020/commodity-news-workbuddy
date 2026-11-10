@@ -3974,7 +3974,7 @@ def generate_report_from_manifest(target_dir, target_date, category_suffix=None)
                     break
         if item.get("final_title"):
             t = item["final_title"]
-            if any(t.endswith(tr) for tr in ["行政", "刷", "超智", "并", "与", "及", "在"]) or re.search(r"（\d+）$", t):
+            if any(t.endswith(tr) for tr in ["行政", "刷", "超智", "并", "与", "及"]) or (t.endswith("在") and not t.endswith("存在") and not t.endswith("正在")) or re.search(r"（\d+）$", t):
                 is_invalid = True
                 
         if item.get("final_title") and item.get("final_body") and get_units(item["final_title"]) >= 15 and not is_invalid:
@@ -4137,7 +4137,7 @@ def generate_report_from_manifest(target_dir, target_date, category_suffix=None)
         else:
             print(f"    [!] Warning: PDF not present for item [{new_id}] {p_item.get('final_title')}")
             
-        # 更新 item 字段
+        # 更新 item 字段（持久化保留 final_* 成果，避免二次运行时被冲掉）
         updated_item = {
             "id": new_id,
             "tier": p_item.get("tier", "P1"),
@@ -4151,6 +4151,9 @@ def generate_report_from_manifest(target_dir, target_date, category_suffix=None)
             "file_size_bytes": file_size,
             "sha256": sha256,
             "extracted_word_count": p_item.get("extracted_word_count", 0),
+            "final_title": p_item.get("final_title", ""),
+            "final_body": p_item.get("final_body", ""),
+            "final_category": p_item.get("final_category", ""),
             "status": "SUCCESS",
             "binary_verified": True
         }

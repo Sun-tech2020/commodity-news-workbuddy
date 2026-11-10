@@ -36,12 +36,14 @@ import time
 import re
 import argparse
 import hashlib
+import urllib.request
 from datetime import datetime, timedelta
 import feedparser
 from bs4 import BeautifulSoup
 import pypdf
 from playwright.sync_api import sync_playwright
 from full_text_verifier import verify_full_text_integrity
+import config_loader
 
 # 目标品种清单（郑商所核心品种）
 TARGET_COMMODITIES = [
@@ -211,12 +213,58 @@ def parse_fca_raw_date(raw_pub):
             pass
     return ''
 
+def safe_fetch_rss(url, timeout=12):
+    """高鲁棒性 RSS 获取与解析器，具备沙箱代理自适应回退能力"""
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+    }
+    req = urllib.request.Request(url, headers=headers)
+    last_err = None
+    
+    # 1. 优先使用当前环境设置请求
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = resp.read()
+            f = feedparser.parse(data)
+            if not f.bozo or len(f.entries) > 0:
+                return f
+            last_err = getattr(f, "bozo_exception", "Parse error")
+    except Exception as e:
+        last_err = e
+        
+    # 2. 若代理阻断或报错（如 502/403），自动绕过代理直连重试
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(req, timeout=timeout) as resp:
+            data = resp.read()
+            f = feedparser.parse(data)
+            if not f.bozo or len(f.entries) > 0:
+                return f
+            last_err = getattr(f, "bozo_exception", "Parse error")
+    except Exception as e:
+        last_err = e
+        
+    # 3. 回退到 feedparser 原生重试
+    try:
+        f = feedparser.parse(url)
+        if f.entries:
+            return f
+        if f.bozo and getattr(f, "bozo_exception", None):
+            last_err = f.bozo_exception
+    except Exception as e:
+        last_err = e
+        
+    if last_err:
+        print(f"    [!] Warning: RSS retrieval error: {last_err}")
+    return feedparser.parse("")
+
 def fetch_fca(target_date, seen_urls):
     """英国金融行为监管局 FCA (策略 A)"""
     items = []
     feed_url = "https://www.fca.org.uk/news/rss.xml"
     try:
-        f = feedparser.parse(feed_url)
+        f = safe_fetch_rss(feed_url)
         window = get_target_date_window(target_date)
         valid_dates = window["valid_dates_set"]
         
@@ -317,6 +365,113 @@ def fetch_newsnow(target_date, seen_urls, max_count=3):
             
     return items
 
+def fetch_cftc_official(target_date, seen_urls, max_count=3):
+    """美国商品期货交易委员会 CFTC 官网发布厅直采 (官方高可用直达信道)"""
+    items = []
+    window = get_target_date_window(target_date)
+    valid_dates = window["valid_dates_set"]
+    url = "https://www.cftc.gov/PressRoom/PressReleases"
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+        soup = BeautifulSoup(html, "html.parser")
+        
+        links = []
+        for a in soup.find_all("a"):
+            href = a.get("href", "")
+            if "/PressRoom/PressReleases/" in href and len(a.text.strip()) > 15:
+                full_url = "https://www.cftc.gov" + href if href.startswith("/") else href
+                if full_url not in seen_urls and full_url not in [x["url"] for x in links]:
+                    links.append({"title": a.text.strip(), "url": full_url})
+                    
+        for item in links[:6]:
+            try:
+                sub_req = urllib.request.Request(item["url"], headers=headers)
+                with urllib.request.urlopen(sub_req, timeout=10) as s_resp:
+                    sub_html = s_resp.read().decode("utf-8", errors="ignore")
+                sub_soup = BeautifulSoup(sub_html, "html.parser")
+                main = sub_soup.select_one("article") or sub_soup.select_one("main") or sub_soup.select_one(".region-content")
+                if not main:
+                    continue
+                text_lines = [l.strip() for l in main.text.split("\n") if l.strip()]
+                pub_d = ""
+                for line in text_lines[:6]:
+                    m = re.search(r"(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(\d{4})", line)
+                    if m:
+                        month_str, day_str, year_str = m.group(1), m.group(2), m.group(3)
+                        dt_obj = datetime.strptime(f"{month_str} {day_str} {year_str}", "%B %d %Y")
+                        pub_d = dt_obj.strftime("%Y-%m-%d")
+                        break
+                if pub_d in valid_dates and matches_theme_or_commodity(item["title"]):
+                    items.append({
+                        "tier": "P2",
+                        "strategy": "A",
+                        "site": "美国商品期货交易委员会（CFTC）",
+                        "category": "三、监管动态",
+                        "title": item["title"],
+                        "url": item["url"],
+                        "publish_date": pub_d,
+                        "summary": f"CFTC 官方新闻发布 (Release {item['url'].split('/')[-1]})"
+                    })
+                    if len(items) >= max_count:
+                        break
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"    [!] CFTC official direct probe note: {e}")
+    return items
+
+def fetch_sec_official(target_date, seen_urls, max_count=3):
+    """美国证券交易委员会 SEC 官网发布厅直采 (官方高可用直达信道)"""
+    items = []
+    window = get_target_date_window(target_date)
+    valid_dates = window["valid_dates_set"]
+    url = "https://www.sec.gov/newsroom/press-releases"
+    headers = {"User-Agent": "CommodityNewsScraper/2.0 (commodity_news_agent@internal.com)"}
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+        soup = BeautifulSoup(html, "html.parser")
+        for tr in soup.select("table tr"):
+            tds = tr.select("td")
+            if len(tds) >= 2:
+                date_txt = tds[0].text.strip()
+                title_a = tds[1].select_one("a")
+                if not title_a:
+                    continue
+                title = title_a.text.strip()
+                href = title_a.get("href", "")
+                full_url = "https://www.sec.gov" + href if href.startswith("/") else href
+                if full_url in seen_urls:
+                    continue
+                cleaned_d = re.sub(r"Sept\.", "Sep.", date_txt)
+                pub_d = ""
+                for fmt in ["%b. %d, %Y", "%B %d, %Y", "%b %d, %Y"]:
+                    try:
+                        pub_d = datetime.strptime(cleaned_d, fmt).strftime("%Y-%m-%d")
+                        break
+                    except ValueError:
+                        pass
+                if pub_d in valid_dates and matches_theme_or_commodity(title):
+                    items.append({
+                        "tier": "P2",
+                        "strategy": "A",
+                        "site": "美国证券交易委员会（SEC）",
+                        "category": "三、监管动态",
+                        "title": title,
+                        "url": full_url,
+                        "publish_date": pub_d,
+                        "summary": "SEC 官方新闻发布"
+                    })
+                    if len(items) >= max_count:
+                        break
+    except Exception as e:
+        print(f"    [!] SEC official direct probe note: {e}")
+    return items
+
 def fetch_google_news_syndication_a(query, site_name, target_date, seen_urls, max_count=3):
     """针对策略 A 官方与公开聚合源的直达检索与解析"""
     items = []
@@ -339,7 +494,7 @@ def fetch_google_news_syndication_a(query, site_name, target_date, seen_urls, ma
             break
         rss_url = f"https://news.google.com/rss/search?q={q_str}&hl=en-US&gl=US&ceid=US:en"
         try:
-            f = feedparser.parse(rss_url)
+            f = safe_fetch_rss(rss_url)
             for entry in f.entries:
                 link = entry.get("link", "")
                 title = entry.get("title", "")
@@ -474,9 +629,23 @@ def run_strategy_a(target_date, target_dir, site_filter=None, ignore_history=Fal
     
     candidates = []
     
-    # 17 个策略 A 站点定向检索配置
+    # 17 个策略 A 站点定向检索配置（采用官方直采 + Google 聚合双轨高可用信道）
+    def get_cftc_items():
+        res = fetch_cftc_official(target_date, seen_urls, 3)
+        if len(res) < 3:
+            g_res = fetch_google_news_syndication_a('site:cftc.gov "Press Release"', "美国商品期货交易委员会（CFTC）", target_date, seen_urls, 3 - len(res))
+            res.extend(g_res)
+        return res
+        
+    def get_sec_items():
+        res = fetch_sec_official(target_date, seen_urls, 3)
+        if len(res) < 3:
+            g_res = fetch_google_news_syndication_a('site:sec.gov/newsroom/press-releases', "美国证券交易委员会（SEC）", target_date, seen_urls, 3 - len(res))
+            res.extend(g_res)
+        return res
+
     site_configs = [
-        {"name": "美国商品期货交易委员会（CFTC）", "handler": lambda: fetch_google_news_syndication_a('site:cftc.gov "Press Release"', "美国商品期货交易委员会（CFTC）", target_date, seen_urls, 3)},
+        {"name": "美国商品期货交易委员会（CFTC）", "handler": get_cftc_items},
         {"name": "芝商所（CME）", "handler": lambda: fetch_google_news_syndication_a('site:cmegroup.com ("press release" OR "futures" OR "clearing" OR "margin")', "芝商所（CME）", target_date, seen_urls, 3)},
         {"name": "洲际交易所（ICE）", "handler": lambda: fetch_google_news_syndication_a('site:ir.theice.com/press', "洲际交易所（ICE）", target_date, seen_urls, 3)},
         {"name": "伦敦金属交易所（LME）", "handler": lambda: fetch_google_news_syndication_a('site:lme.com', "伦敦金属交易所（LME）", target_date, seen_urls, 3)},
@@ -486,7 +655,7 @@ def run_strategy_a(target_date, target_dir, site_filter=None, ignore_history=Fal
         {"name": "雅虎财经", "handler": lambda: fetch_google_news_syndication_a('site:finance.yahoo.com (commodities OR futures OR "interest rate" OR "Federal Reserve")', "雅虎财经", target_date, seen_urls, 3)},
         {"name": "纳斯达克（Nasdaq）", "handler": lambda: fetch_google_news_syndication_a('site:nasdaq.com ("press release" OR commodities OR futures OR exchange)', "纳斯达克（Nasdaq）", target_date, seen_urls, 3)},
         {"name": "印度证券交易委员会（SEBI）", "handler": lambda: fetch_google_news_syndication_a('site:sebi.gov.in', "印度证券交易委员会（SEBI）", target_date, seen_urls, 3)},
-        {"name": "美国证券交易委员会（SEC）", "handler": lambda: fetch_google_news_syndication_a('site:sec.gov/newsroom/press-releases', "美国证券交易委员会（SEC）", target_date, seen_urls, 3)},
+        {"name": "美国证券交易委员会（SEC）", "handler": get_sec_items},
         {"name": "英国金融行为监管局（FCA）", "handler": lambda: fetch_fca(target_date, seen_urls)},
         {"name": "国际掉期与衍生品协会（ISDA）", "handler": lambda: fetch_google_news_syndication_a('site:isda.org', "国际掉期与衍生品协会（ISDA）", target_date, seen_urls, 3)},
         {"name": "美国全国期货协会（NFA）", "handler": lambda: fetch_google_news_syndication_a('site:nfa.futures.org', "美国全国期货协会（NFA）", target_date, seen_urls, 3)},

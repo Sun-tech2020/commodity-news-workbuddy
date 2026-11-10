@@ -1,4 +1,3 @@
-import config_loader
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -32,12 +31,14 @@ import time
 import re
 import argparse
 import hashlib
+import urllib.request
 from datetime import datetime, timedelta
 import feedparser
 from bs4 import BeautifulSoup
 import pypdf
 from playwright.sync_api import sync_playwright
 from full_text_verifier import verify_full_text_integrity
+import config_loader
 
 # 目标品种清单（郑商所核心品种）
 TARGET_COMMODITIES = [
@@ -139,6 +140,52 @@ def matches_theme_or_commodity(title, summary=""):
         return True
     return False
 
+def safe_fetch_rss(url, timeout=12):
+    """高鲁棒性 RSS 获取与解析器，具备沙箱代理自适应回退能力"""
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+    }
+    req = urllib.request.Request(url, headers=headers)
+    last_err = None
+    
+    # 1. 优先使用当前环境设置（包括用户自定义代理）请求
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = resp.read()
+            f = feedparser.parse(data)
+            if not f.bozo or len(f.entries) > 0:
+                return f
+            last_err = getattr(f, "bozo_exception", "Parse error")
+    except Exception as e:
+        last_err = e
+        
+    # 2. 若代理阻断或报错（如 502/403），自动绕过代理直连重试
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(req, timeout=timeout) as resp:
+            data = resp.read()
+            f = feedparser.parse(data)
+            if not f.bozo or len(f.entries) > 0:
+                return f
+            last_err = getattr(f, "bozo_exception", "Parse error")
+    except Exception as e:
+        last_err = e
+        
+    # 3. 回退到 feedparser 原生重试
+    try:
+        f = feedparser.parse(url)
+        if f.entries:
+            return f
+        if f.bozo and getattr(f, "bozo_exception", None):
+            last_err = f.bozo_exception
+    except Exception as e:
+        last_err = e
+        
+    if last_err:
+        print(f"    [!] Warning: RSS retrieval error: {last_err}")
+    return feedparser.parse("")
+
 def fetch_google_news_syndication_c(query, site_name, tier, target_date, seen_urls, max_count=3):
     """针对 P3 头部商业媒体的策略 C 检索"""
     items = []
@@ -161,7 +208,7 @@ def fetch_google_news_syndication_c(query, site_name, tier, target_date, seen_ur
             break
         rss_url = f"https://news.google.com/rss/search?q={q_str}&hl=en-US&gl=US&ceid=US:en"
         try:
-            f = feedparser.parse(rss_url)
+            f = safe_fetch_rss(rss_url)
             for entry in f.entries:
                 link = entry.get("link", "")
                 title = entry.get("title", "")
@@ -448,5 +495,9 @@ if __name__ == "__main__":
     parser.add_argument("--ignore-history", action="store_true", help="Ignore deduplication history for isolated testing")
     args = parser.parse_args()
     
-    target_dir = config_loader.get_target_dir(args.date, args.dir)
+    if args.dir:
+        target_dir = os.path.abspath(args.dir)
+    else:
+        target_dir = config_loader.get_target_dir(args.date)
+    os.makedirs(target_dir, exist_ok=True)
     run_strategy_c(args.date, target_dir, ignore_history=args.ignore_history)

@@ -62,7 +62,7 @@ for /f "tokens=*" %%v in ('"!PYFOUND!" --version 2^>^&1') do echo  版本: %%v
 echo ==============================================================
 echo.
 
-"!PYFOUND!" "%SCRIPT_DIR%run_daily.py" %*
+"!PYFOUND!" "%SCRIPT_DIR%run_daily_pipeline.py" %*
 
 endlocal
 exit /b %ERRORLEVEL%

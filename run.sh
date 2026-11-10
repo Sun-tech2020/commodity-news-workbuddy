@@ -100,4 +100,4 @@ echo " 版本: $("$PYTHON" --version 2>&1)"
 echo "=============================================================="
 echo ""
 
-exec "$PYTHON" "${SCRIPT_DIR}/run_daily.py" "$@"
+exec "$PYTHON" "${SCRIPT_DIR}/run_daily_pipeline.py" "$@"

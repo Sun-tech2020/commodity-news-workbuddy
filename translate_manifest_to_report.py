@@ -3105,7 +3105,7 @@ TRANSLATIONS_DATABASE = [
         "body": "9月16日，美国存托信托与清算公司（DTCC）宣布旗下基金服务系统 Fund/SERV 正式吸纳 Ondo Finance 为首个代币化会员，推动代币化基金接入传统金融主流通道。Ondo 的代币化美债产品 OUSG 将直接集成至 DTCC 结算基础设施，使传统经纪商与财富管理机构能够通过现有后台清算网络无缝申赎代币化现实世界资产（RWA）。DTCC 计划依托该合作进一步探索跨链结算与代币化基金合规标准。"
     },
     {
-        "match_keys": ["private credit", "ice"],
+        "match_keys": ["private credit reference data", "ice"],
         "title": "洲际交易所推出私募信贷参考数据服务",
         "category": "一、交易所动态",
         "body": "9月16日，洲际交易所（ICE）宣布正式推出私募信贷参考数据服务（Private Credit Reference Data），为快速扩张的非公开债权市场提供专业定价基准与参考数据。该服务整合了超过 4500 家借款企业的财务指标、债务契约条款及违约风险模型，帮助资产管理机构与商业银行评估非标信贷抵押品价值并满足资本充足率审查要求。该数据集已作为 ICE 综合信贷评估体系的核心模块向全球机构开放订阅。"
@@ -3606,7 +3606,16 @@ def extract_real_subject_from_title(title, site):
         (r"\btrafigura\b", "托克集团（Trafigura）"),
         (r"\bglencore\b", "嘉能可（Glencore）"),
         (r"\bvitol\b", "维多集团（Vitol）"),
-        (r"\bstrathcona\b", "加拿大Strathcona能源")
+        (r"\bstrathcona\b", "加拿大Strathcona能源"),
+        (r"\basic\b", "澳大利亚证券投资委员会（ASIC）"),
+        (r"\bdfsa\b|\bdubai financial services authority\b", "迪拜金融服务管理局（DFSA）"),
+        (r"\bmas\b|\bmonetary authority of singapore\b", "新加坡金融管理局（MAS）"),
+        (r"\bmontr[eé]al exchange\b|\bmx\b", "蒙特利尔交易所（MX）"),
+        (r"\ba5x\b", "巴西A5X交易所"),
+        (r"\bnse\b|\bnational stock exchange of india\b", "印度国家证券交易所（NSE）"),
+        (r"\bcoinbase\b", "加密交易商Coinbase"),
+        (r"\bocc\b", "美国货币监理署（OCC）"),
+        (r"\bmsci\b", "明晟公司（MSCI）")
     ]
     
     for pat, subj in subject_map:
@@ -3633,28 +3642,40 @@ def extract_real_subject_from_title(title, site):
     else:
         return "国际金融与大宗商品市场"
 
+def match_key_in_text(key, text):
+    k_low = key.lower().strip()
+    t_low = text.lower()
+    if re.search(r'^[a-z0-9_\-\s]+$', k_low):
+        # 英文/数字关键词：强制使用完整单词边界 \b 匹配，杜绝 practices 误中 ice、security 误中 sec 等
+        pattern = r'\b' + re.escape(k_low).replace(r'\ ', r'\s+') + r'\b'
+        return bool(re.search(pattern, t_low))
+    else:
+        return k_low in t_low
+
 def find_best_translation(title, site="", target_date=None):
     title_only_lower = title.lower()
     full_lower = (title + " " + site).lower()
     for trans in TRANSLATIONS_DATABASE:
         keys = trans["match_keys"]
-        # 严格要求：必须至少有 1 个关键特征词出现在文章原标题本身中，严禁仅凭 site 机构名称误判
-        if not any(k.lower() in title_only_lower for k in keys):
+        # 必须所有 key 都在 full_lower 中以完整单词/词组命中
+        if not all(match_key_in_text(k, full_lower) for k in keys):
             continue
-        if all(k.lower() in full_lower for k in keys):
-            res = dict(trans)
-            # 动态对齐发布日期：若提供了 target_date，且正文以日期开头
-            if target_date:
-                try:
-                    parts = target_date.split("-")
-                    m_str = f"{int(parts[1])}月"
-                    d_int = int(parts[2])
-                    # 新闻报道通常发生于 T-1 日或 T 日
-                    pub_d_str = f"{m_str}{d_int-1}日" if d_int > 1 else f"{m_str}{d_int}日"
-                    res["body"] = re.sub(r"^\d+月\d+日", pub_d_str, res["body"])
-                except Exception:
-                    pass
-            return res
+        # 严格要求：必须至少有 1 个关键特征词在原标题中以完整单词命中，严禁仅凭 site 机构名称误判
+        if not any(match_key_in_text(k, title_only_lower) for k in keys):
+            continue
+        res = dict(trans)
+        # 动态对齐发布日期：若提供了 target_date，且正文以日期开头
+        if target_date:
+            try:
+                parts = target_date.split("-")
+                m_str = f"{int(parts[1])}月"
+                d_int = int(parts[2])
+                # 新闻报道通常发生于 T-1 日或 T 日
+                pub_d_str = f"{m_str}{d_int-1}日" if d_int > 1 else f"{m_str}{d_int}日"
+                res["body"] = re.sub(r"^\d+月\d+日", pub_d_str, res["body"])
+            except Exception:
+                pass
+        return res
     return None
 
 def extract_clean_article_text(pdf_path):
@@ -3701,15 +3722,18 @@ def extract_clean_article_text(pdf_path):
         r"terms of use", r"privacy policy", r"cookie", r"to contact the reporter",
         r"track all markets on tradingview", r"exchange directory", r"an official website",
         r"close", r"login", r"search", r"terms & conditions", r"contact us",
-        r"exchanges index:", r"disclaimer", r"index news"
+        r"exchanges index:", r"disclaimer", r"index news",
+        r"valor", r"isin", r"don't miss out", r"share price trends", r"customised watchlists",
+        r"find the products", r"investment goals", r"newsletter", r"market data is delayed",
+        r"all quotes are", r"feedback", r"sponsored", r"advertisement", r"sign in", r"register"
     ]
     
     for l in content_lines:
         l_lower = l.lower()
         if any(re.search(np, l_lower) for np in noise_patterns):
             continue
-        # 排除过短的纯元数据行
-        if len(l) > 25:
+        # 排除过短或纯元数据表头（至少包含 6 个英文词且总长大于 25）
+        if len(l) > 25 and len(re.findall(r"[A-Za-z]+", l)) >= 6:
             clean_paras.append(l)
             
     return clean_paras
@@ -3727,6 +3751,10 @@ def extract_facts_from_clean_paras(clean_paras, title_en):
     if m_who:
         res["spokesperson"] = m_who.group(1)
     return res
+
+def strip_title_suffix(t: str) -> str:
+    """彻底剥离末尾可能存在的任何已有括号后缀，避免多重嵌套或截断残损"""
+    return re.sub(r"[\(（][^）\)]*[\)）]?$", "", t).strip()
 
 def generate_fallback_translation(item, target_dir, seen_titles=None):
     """
@@ -3794,10 +3822,18 @@ def generate_fallback_translation(item, target_dir, seen_titles=None):
             action = "发布执法决定并对违规行为实施行政处罚"
         elif "rule" in t_lower or "propos" in t_lower:
             action = "推进法规修订并就监管规则公开征求意见"
-        elif "report" in t_lower or "survey" in t_lower:
+        elif "report" in t_lower or "survey" in t_lower or "white paper" in t_lower:
             action = "发布专项研报深入剖析市场运行与持仓特征"
-        elif "launch" in t_lower or "introduc" in t_lower:
+        elif "launch" in t_lower or "introduc" in t_lower or "list" in t_lower:
             action = "上线新型交易品种与合约优化市场流动性"
+        elif "speech" in t_lower or "remarks" in t_lower or "address" in t_lower:
+            action = "高级官员发表致辞阐述监管与业务重点"
+        elif "gold" in t_lower or "vault" in t_lower:
+            action = "推出贵金属金库服务并优化现货交割与税收机制"
+        elif "tokenis" in t_lower or "tokeniz" in t_lower:
+            action = "发布资产代币化标准指引推进数字金融创新"
+        elif "ai" in t_lower or "compute" in t_lower or "cooling" in t_lower:
+            action = "升级智算基础设施以支持高频低延迟撮合交易"
             
         short_subj = re.sub(r"（.*?）", "", real_subject).strip()
         draft_title = f"{short_subj}{action}"
@@ -3846,21 +3882,19 @@ def generate_fallback_translation(item, target_dir, seen_titles=None):
             draft_title = draft_title[:30]
         draft_title = re.sub(r"[并与及在刷等以及和的]+$", "", draft_title).strip()
         
-    # 全局语义去重（杜绝流水号，严格保证后缀追加后不超过 32 字符）
+    # 全局语义去重（杜绝流水号，循环选取候选后缀，严格保证全局唯一且不超过 32 字符）
     if seen_titles is not None and draft_title in seen_titles:
-        suffix_str = "（业务动态）"
-        if "圆桌会议" in draft_title or "致辞" in draft_title:
-            suffix_str = "（专题研讨）"
-        elif "市场" in draft_title:
-            suffix_str = "（现货走势）"
-        elif "监管" in draft_title or "处罚" in draft_title:
-            suffix_str = "（合规通报）"
-            
-        max_base = 32 - get_title_units(suffix_str)
-        if get_title_units(draft_title) > max_base:
-            draft_title = draft_title[:max_base]
-            draft_title = re.sub(r"[并与及在刷等以及和的]+$", "", draft_title).strip()
-        draft_title = draft_title + suffix_str
+        suffix_pool = ["（业务动态）", "（现货走势）", "（专题研讨）", "（合规通报）", "（要点补充）", "（市场跟踪）"]
+        clean_base = strip_title_suffix(draft_title)
+        for cand_s in suffix_pool:
+            cand_len = get_title_units(cand_s)
+            max_base = 32 - cand_len
+            cand_title = (clean_base[:max_base] if get_title_units(clean_base) > max_base else clean_base) + cand_s
+            if cand_title not in seen_titles:
+                draft_title = cand_title
+                break
+        else:
+            draft_title = clean_base[:26] + "（业务通报）"
             
     # 字数精确控制在 160 ~ 210（按 中文字符数 + 英文单词数）
     w_cnt = count_words(body)
@@ -3958,22 +3992,19 @@ def generate_report_from_manifest(target_dir, target_date, category_suffix=None)
             item["final_category"] = trans["category"]
             manifest_updated = True
 
-        # 全局标题去重保障（杜绝流水号，严格保证后缀追加后不超过 32 字符）
+        # 全局标题去重保障（杜绝流水号，循环选取候选后缀，严格保证全局唯一且不超过 32 字符）
         if trans["title"] in seen_generated_titles:
-            suffix_str = "（要点细化）"
-            if "圆桌" in trans["title"] or "致辞" in trans["title"]:
-                suffix_str = "（专题致辞）"
-            elif "市场" in trans["title"]:
-                suffix_str = "（现货走向）"
-            elif "监管" in trans["title"] or "处罚" in trans["title"]:
-                suffix_str = "（合规通报）"
-                
-            base_t = trans["title"]
-            max_base = 32 - count_words(suffix_str)
-            if count_words(base_t) > max_base:
-                base_t = base_t[:max_base]
-                base_t = re.sub(r"[并与及在刷等以及和的]+$", "", base_t).strip()
-            trans["title"] = base_t + suffix_str
+            suffix_pool = ["（要点细化）", "（现货走向）", "（专题致辞）", "（合规通报）", "（市场跟踪）", "（动态补充）", "（业务细化）"]
+            clean_base = strip_title_suffix(trans["title"])
+            for cand_s in suffix_pool:
+                cand_len = count_words(cand_s)
+                max_base = 32 - cand_len
+                cand_title = (clean_base[:max_base] if count_words(clean_base) > max_base else clean_base) + cand_s
+                if cand_title not in seen_generated_titles:
+                    trans["title"] = cand_title
+                    break
+            else:
+                trans["title"] = clean_base[:26] + "（业务动态）"
             item["final_title"] = trans["title"]
             manifest_updated = True
         seen_generated_titles.add(trans["title"])

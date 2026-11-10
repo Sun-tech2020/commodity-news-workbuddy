@@ -562,8 +562,11 @@ def print_to_pdf_native(page, url, target_path):
                     break
                 time.sleep(0.3)
         else:
+            is_slow_site = any(d in url.lower() for d in ["cmegroup.com", "nasdaq.com", "ice.com", "sebi.gov.in"])
+            nav_timeout = 28000 if is_slow_site else 15000
+            fallback_timeout = 25000 if is_slow_site else 10000
             try:
-                page.goto(url, wait_until="domcontentloaded", timeout=12000)
+                page.goto(url, wait_until="domcontentloaded", timeout=nav_timeout)
             except Exception as e_nav:
                 if any(err in str(e_nav) for err in ["ERR_HTTP2_PROTOCOL_ERROR", "net::ERR_"]):
                     try:
@@ -572,12 +575,12 @@ def print_to_pdf_native(page, url, target_path):
                             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
                         })
-                        html_bytes = urllib.request.urlopen(req, timeout=10).read()
+                        html_bytes = urllib.request.urlopen(req, timeout=12).read()
                         page.set_content(html_bytes.decode("utf-8", errors="ignore"), wait_until="domcontentloaded")
                     except Exception:
-                        page.goto(url, wait_until="commit", timeout=8000)
+                        page.goto(url, wait_until="commit", timeout=fallback_timeout)
                 else:
-                    page.goto(url, wait_until="commit", timeout=8000)
+                    page.goto(url, wait_until="commit", timeout=fallback_timeout)
                 
         # 针对 Yahoo / GDPR 弹窗自动点击同意
         if any(w in page.url for w in ["consent.yahoo.com", "guce.yahoo.com", "consent.google.com"]):

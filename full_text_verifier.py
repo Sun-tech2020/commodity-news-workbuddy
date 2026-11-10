@@ -189,10 +189,21 @@ def verify_full_text_integrity(
             if tok[0].isupper() or t_low in ["crypto", "swaps", "tokenisation", "tokenization", "ets2", "derivatives", "repo", "futures", "options"]:
                 distinctive_entities.append(t_low)
                 
+        domain_keywords = {
+            "prediction", "predict", "derivative", "derivatives", "futures", "options",
+            "swaps", "clearing", "hedging", "hedge", "trader", "trading", "crypto",
+            "tokenisation", "tokenization", "repo", "exchange", "exchanges", "commodities",
+            "commodity", "crude", "energy", "metals", "agriculture", "regulator", "regulatory",
+            "market", "markets", "structure", "panel", "conference"
+        }
+
         if distinctive_entities:
             matched_entities = [ent for ent in distinctive_entities if ent in raw_text_lower]
             if len(matched_entities) == 0:
-                return False, f"Document text missing core title entity anchors: {distinctive_entities}", stats
+                # 实体不在正文时，检查是否共享至少 2 个金融/大宗领域关键词（如 FIA 预测市场架构研讨）
+                shared_domain = [w.lower() for w in title_tokens if w.lower() in domain_keywords and w.lower() in raw_text_lower]
+                if len(shared_domain) < 2:
+                    return False, f"Document text missing core title entity anchors: {distinctive_entities}", stats
         else:
             clean_kw = [w.lower() for w in re.findall(r"\b[A-Za-z0-9]{4,}\b", original_title) if w.lower() not in generic_words]
             if clean_kw:

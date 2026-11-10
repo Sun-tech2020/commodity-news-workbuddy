@@ -148,7 +148,15 @@ def main():
     else:
         warnings.append("未找到 download_manifest.json，跳过来源引用行校验")
 
-    # 红线 3 / 4
+    # 红线 3 / 4 及内容保真度校验（反套话、反截断、反重复）
+    seen_titles = set()
+    prohibited_body_phrases = [
+        "FTSE Mondo Visione", "Exchanges Index:", "根据官方公布的原始文书披露",
+        "相关核心事实要点如下", "后续具体执行进展将保持跟踪",
+        "Mondo Visione正式对外发布", "相关调研与交易数据显示"
+    ]
+    truncation_hangs = ["行政", "刷", "超智", "并", "与", "及", "在", "等以及"]
+
     for e in entries:
         t, b = count_units(e["title"]), count_units(e["body"])
         if not (TITLE_MIN <= t <= TITLE_MAX):
@@ -157,6 +165,22 @@ def main():
             errors.append(f"[{e['id']}] 正文 {b} 字，越界（须 {BODY_MIN}~{BODY_MAX}）")
         if re.search(r"^\s*[-*+]\s+", e["body"], re.M):
             warnings.append(f"[{e['id']}] 正文疑似含分点罗列，应改为自然段落流")
+
+        # 标题去重与残句截断校验
+        if e["title"] in seen_titles:
+            errors.append(f"[{e['id']}] 标题重复出现：{e['title']}")
+        seen_titles.add(e["title"])
+        
+        for hang in truncation_hangs:
+            if e["title"].endswith(hang):
+                errors.append(f"[{e['id']}] 标题疑似生硬截断残句（以'{hang}'结尾）：{e['title']}")
+                break
+
+        # 正文反套话与反伪事实噪音校验（零幻视铁律）
+        for bad_p in prohibited_body_phrases:
+            if bad_p in e["body"]:
+                errors.append(f"[{e['id']}] 正文触碰零幻视红线，包含模板套话或页面噪音：'{bad_p}'")
+                break
 
     print(f"日报：{rp}")
     print(f"条目：{len(entries)} 篇")

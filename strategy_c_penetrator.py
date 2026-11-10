@@ -134,7 +134,12 @@ def is_strict_date_in_text(text, target_date_str):
 
 EXCLUDE_KEYWORDS = [
     "health-law", "food aid", "snap benefits", "immigrant", "immigrants",
-    "judicial push", "appeals court nominee", "election fraud", "voter fraud"
+    "judicial push", "appeals court nominee", "election fraud", "voter fraud",
+    "adds doj attorney", "adds partner", "law firm", "attorney", "lawyer",
+    "legal practice", "partner based in", "whitaker", "adds doj", "hires", "hired",
+    "instant payments", "payments network", "retail payments", "retail payment",
+    "payments canada", "real-time rail", "payment system",
+    "judges", "judicial", "appeals court", "nominee", "court nominee"
 ]
 
 def matches_theme_or_commodity(title, summary=""):

@@ -241,19 +241,84 @@ def merge_and_finalize_manifest(target_dir, update_history=True):
                 
     print(f"[*] Total raw items collected: {len(all_raw_items)}")
     
-    # URL 去重、分类校准与物理文件存在性复核
+    def normalize_event_signature(title):
+        clean = re.sub(r"[^\w\s]", " ", title.lower())
+        clean = re.sub(r"\b(mondo visione|bloomberg|reuters|fow insights)\b", "", clean)
+        words = [w for w in clean.split() if w not in ["the", "a", "an", "for", "to", "in", "on", "at", "of", "and", "with", "by", "as", "from"]]
+        return " ".join(words[:6]) if len(words) >= 6 else " ".join(words)
+
+    def is_same_event(title1, title2):
+        def get_tokens(t):
+            t_clean = re.sub(r"[^\w\s]", " ", t.lower())
+            words = set([w for w in t_clean.split() if len(w) > 2 and w not in ["the", "for", "and", "with", "from", "that", "this", "about", "into", "update"]])
+            if "8" in words or "eight" in words:
+                words.add("8")
+                words.add("eight")
+            return words
+        tok1 = get_tokens(title1)
+        tok2 = get_tokens(title2)
+        if not tok1 or not tok2:
+            return False
+        inter = tok1.intersection(tok2)
+        union = tok1.union(tok2)
+        if not union:
+            return False
+        jaccard = len(inter) / len(union)
+        return jaccard >= 0.55
+
+    # URL 去重、跨源同事件去重、分类校准与物理文件存在性复核
     seen_urls = set()
     deduped_items = []
+    
     for item in all_raw_items:
         url = item.get("source_url") or item.get("public_url") or item.get("fow_url")
         if not item.get("source_url") and url:
             item["source_url"] = url
         if not item.get("local_filename") and item.get("pdf_filename"):
             item["local_filename"] = item.get("pdf_filename")
-        if url and url not in seen_urls:
-            seen_urls.add(url)
-            item["category"] = classify_item_category(item.get("original_title", ""), item.get("site", ""), item.get("category"))
-            deduped_items.append(item)
+            
+        if not url or url in seen_urls:
+            continue
+            
+        item_title = item.get("original_title", "")
+        strat = item.get("strategy", "B")
+        
+        # 跨源同事件去重逻辑：检查是否与已收录条目为同一事件报道
+        duplicate_idx = None
+        for prev_idx, prev_item in enumerate(deduped_items):
+            prev_title = prev_item.get("original_title", "")
+            if is_same_event(item_title, prev_title):
+                duplicate_idx = prev_idx
+                break
+                
+        if duplicate_idx is not None:
+            prev_item = deduped_items[duplicate_idx]
+            if strat == "A" and prev_item.get("strategy") != "A":
+                # 官方源替换第三方转载
+                print(f"    [*] 跨源事件去重：用官方源 [{item.get('site')}] 替代第三方转载 [{prev_item.get('site')}]: {item_title[:45]}")
+                old_pdf = prev_item.get("local_filename")
+                if old_pdf and os.path.exists(os.path.join(target_dir, old_pdf)):
+                    try:
+                        os.remove(os.path.join(target_dir, old_pdf))
+                    except Exception:
+                        pass
+                item["category"] = classify_item_category(item_title, item.get("site", ""), item.get("category"))
+                deduped_items[duplicate_idx] = item
+                seen_urls.add(url)
+            else:
+                print(f"    [*] 跨源事件去重：跳过重复事件报道 [{item.get('site')}]: {item_title[:45]}")
+                # 尝试删除后来的第三方重复 PDF 文件
+                curr_pdf = item.get("local_filename")
+                if curr_pdf and os.path.exists(os.path.join(target_dir, curr_pdf)):
+                    try:
+                        os.remove(os.path.join(target_dir, curr_pdf))
+                    except Exception:
+                        pass
+            continue
+            
+        seen_urls.add(url)
+        item["category"] = classify_item_category(item_title, item.get("site", ""), item.get("category"))
+        deduped_items.append(item)
             
     # 排序：板块 (1/2/3) -> 优先级 (P1: 1, P2: 2, P3: 3) -> 机构名称
     tier_order = {"P1": 1, "P2": 2, "P3": 3}

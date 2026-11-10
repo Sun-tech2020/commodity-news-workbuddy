@@ -7,4 +7,5 @@ Thumbs.db
 .idea/
 *.log
 .workbuddy/memory/
+test_sampling_output/
 

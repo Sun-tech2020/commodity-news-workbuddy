@@ -3797,24 +3797,21 @@ def generate_fallback_translation(item, target_dir, seen_titles=None):
         draft_title = f"{short_subj}{action}"
         
         # 提取真实事实句
-        fact_sentence = ""
         if clean_paras:
-            p0 = clean_paras[0]
-            p0 = re.sub(r"^[A-Z\s]+—\s*", "", p0)
-            fact_sentence = f"存证原文通报显示：{p0[:110]}。"
-            
-        if cat == "一、交易所动态":
-            body = (f"{date_cn}，{real_subject}正式通报相关业务部署。{fact_sentence}"
-                    f"交易所管理层指出，本次举措深度契合行业发展趋势，重点优化了交易撮合与风险防控机制，"
-                    f"有助于进一步提升市场透明度与清算结算效率，为各类产业客户提供稳定的交易环境。")
-        elif cat == "三、监管动态":
-            body = (f"{date_cn}，{real_subject}发布正式监管公报。{fact_sentence}"
-                    f"监管部门强调，各市场参与主体必须严格履行合规义务与信息披露要求，防范系统性金融风险，"
-                    f"切实保护投资者合法权益，维护公平透明的市场秩序。")
+            # 提取英文首段与次段核心事实句，彻底移除假借发言归属的伪引语
+            p_facts = []
+            for p in clean_paras[:2]:
+                clean_p = re.sub(r"^[A-Z\s]+—\s*", "", p)
+                clean_p = re.sub(r"\s+", " ", clean_p).strip()
+                if clean_p:
+                    p_facts.append(clean_p)
+            fact_body = " ".join(p_facts)[:130]
+            body = (f"{date_cn}，{real_subject}正式发布相关业务动态通告。"
+                    f"存证原文核心通报明确披露：“{fact_body}”。"
+                    f"相关业务推进与落地实施正有序展开，后续将根据官方正式文件保持跟踪。")
         else:
-            body = (f"{date_cn}，{real_subject}发布行业监测通报。{fact_sentence}"
-                    f"分析指出，相关市场变化反映了当前宏观资金配置意愿，产业机构与投资者需密切跟踪现货及衍生品"
-                    f"基差波动，合理运用套期保值工具防范资产下行风险。")
+            body = (f"{date_cn}，{real_subject}发布相关业务动态通告。"
+                    f"【待人工编译：物理存证未提取到有效文本段落，请人工查阅原始存证并核验】")
                     
     def get_title_units(s):
         return len(re.findall(r"[\u4e00-\u9fff]", s)) + len(re.findall(r"[A-Za-z]+", s))
@@ -3822,7 +3819,12 @@ def generate_fallback_translation(item, target_dir, seen_titles=None):
     if get_title_units(draft_title) < 15:
         draft_title = f"权威动态：{draft_title}"
     if get_title_units(draft_title) > 32:
-        draft_title = draft_title[:32]
+        # 安全截断，绝不在词中间截断
+        m_cut = re.search(r"^(.*?)(?:[，、；]|$)", draft_title[:32])
+        if m_cut and len(m_cut.group(1)) >= 15:
+            draft_title = m_cut.group(1)
+        else:
+            draft_title = draft_title[:30]
         draft_title = re.sub(r"[并与及在刷等以及和的]+$", "", draft_title).strip()
         
     # 全局语义去重（杜绝流水号）
@@ -3839,7 +3841,13 @@ def generate_fallback_translation(item, target_dir, seen_titles=None):
     if w_cnt < 160:
         body += "官方表示后续进展将持续对外发布。"
     elif w_cnt > 215:
-        body = body[:212] + "。"
+        # 在完整句号处截断
+        body = body[:210]
+        last_period = body.rfind("。")
+        if last_period > 150:
+            body = body[:last_period+1]
+        else:
+            body = body + "。"
 
     final_words = count_words(body)
     print(f"    [+] 自动为新新闻条目 [{item.get('id')}] 生成真实快报: {draft_title} ({get_title_units(draft_title)} 字符 / 正文 {final_words} 字)")

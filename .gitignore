@@ -8,4 +8,5 @@ Thumbs.db
 *.log
 .workbuddy/memory/
 test_sampling_output/
+.downloaded_history.json
 

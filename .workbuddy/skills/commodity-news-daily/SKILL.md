@@ -10,7 +10,11 @@ description: 国际大宗商品与衍生品市场每日新闻采编。当用户�
 ## 前置（每次执行前）
 
 1. 先完整阅读项目根目录下的 `WORKBUDDY_INSTRUCTIONS.md`，以其为最高执行规范。
-2. 运行环境自检：优先使用本机已装好依赖的 Python 解释器（run.sh 会自动探测 14 个候选路径；也可手动 `python3 -c "import playwright, bs4, feedparser, pypdf, googlenewsdecoder"` 验证）。
+2. **网络体检（必做，约 10 秒）**：运行 `python3 preflight_net_check.py`。
+   - 退出码 0 → 继续；
+   - 退出码 1（致命故障）→ **停止采集**，把失败清单与处置建议原样告诉用户（多为代理节点失效或未开 TUN 模式），修好后再重跑本步；
+   - CME/Nasdaq/LME 显示 WARN 属正常（站点反爬），不阻断。
+3. 运行环境自检：优先使用本机已装好依赖的 Python 解释器（run.sh 会自动探测候选路径；也可手动 `python3 -c "import playwright, bs4, feedparser, pypdf, googlenewsdecoder"` 验证）。
 
 ## 执行链条（指令 → 六个环节）
 

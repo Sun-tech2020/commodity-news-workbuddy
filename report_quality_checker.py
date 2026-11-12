@@ -151,13 +151,19 @@ def main():
     # 红线 3 / 4 及内容保真度校验（反套话、反截断、反重复、日期对齐）
     seen_titles = set()
     prohibited_body_phrases = [
-        "FTSE Mondo Visione", "Exchanges Index:", "根据官方公布的原始文书披露",
+        "Exchanges Index:", "根据官方公布的原始文书披露",
         "相关核心事实要点如下", "后续具体执行进展将保持跟踪",
         "Mondo Visione正式对外发布", "相关调研与交易数据显示",
         "推进关键业务举措并披露最新市场运营进展",
         "通报详细阐述了当前宏观周期与供需格局演变",
         "相关举措有助于各类实体企业与专业投资机构前瞻评估走势",
         "多资产配置与风险对冲工具在应对极端市场波动中具有关键防御价值"
+    ]
+    # 页眉行情条噪音：仅当机构名后紧跟指数点位（如 108,401.70 +1,456.23）时判废，
+    # 避免把正当引用「FTSE Mondo Visione 交易所指数」的来源名误杀。
+    prohibited_body_patterns = [
+        re.compile(r"FTSE Mondo Visione[^\u3002\uff0c]{0,30}\d{2,3},\d{3}"),
+        re.compile(r"\+\d{1,3},\d{3}\.\d{2}"),
     ]
     truncation_hangs = ["行政", "刷", "超智", "并", "与", "及", "在", "等以及"]
 
@@ -187,6 +193,11 @@ def main():
         for bad_p in prohibited_body_phrases:
             if bad_p in e["body"]:
                 errors.append(f"[{e['id']}] 正文触碰零幻视红线，包含模板套话或页面噪音：'{bad_p}'")
+                break
+        for pat in prohibited_body_patterns:
+            m_pat = pat.search(e["body"])
+            if m_pat:
+                errors.append(f"[{e['id']}] 正文触碰零幻视红线，疑似混入页眉行情条：'{m_pat.group(0)[:30]}'")
                 break
                 
         # 来源行日期与正文开头日期一致性校验
